@@ -9,7 +9,7 @@ async def names(p, n, base):
     for k in range(n): await p.fill(f"#nm{k}", f"{base}{k+1}")
     await p.click("#nmOk")
 async def setup(b):
-    h = await newp(b); await h.goto(BASE); await h.click("#goFar"); await h.click("#p1"); await names(h, 1, "おや")
+    h = await newp(b); await h.goto(BASE); await h.click("#goFar"); await h.click("#p1"); await names(h, 1, "おや"); await h.click("#goLink")
     await h.wait_for_function("NET.peer && NET.peer.open", timeout=20000); url = await h.evaluate("NET.inviteURL()")
     gs = []
     for k in range(2):
@@ -59,7 +59,7 @@ async def main():
         await b.close()
         # 5) 親が 読みなおして もう一度 部屋をひらく → ゲストは おわり
         b = await pw.chromium.launch(args=ARGS); h, (g1, g2) = await setup(b)
-        await h.reload(); await h.click("#goFar"); await h.click("#p1"); await h.click("#nmOk")
+        await h.reload(); await h.click("#goFar"); await h.click("#p1"); await h.click("#nmOk"); await h.click("#goLink")
         await g1.wait_for_function(atMenu, timeout=90000)
         print("5 親が はじめから：ゲストは はじめの画面へ OK")
         await b.close()

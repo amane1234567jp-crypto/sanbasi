@@ -118,9 +118,10 @@ export default function App() {
     try {
       if (!url || !url.includes("?")) return;
       const q = new URLSearchParams(url.slice(url.indexOf("?") + 1));
-      if (!q.get("r")) return;
+      // ?r=部屋（あそぶ。inv=1 は よびだし）か、?m=reg&fd=（とうろく）
+      if (!q.get("r") && !(q.get("m") === "reg" && q.get("fd"))) return;
       const keep = new URLSearchParams();
-      for (const k of ["r", "n", "ring", "fd"]) if (q.get(k)) keep.set(k, q.get(k));
+      for (const k of ["r", "n", "inv", "fp", "m", "fd", "fn"]) if (q.get(k)) keep.set(k, q.get(k));
       setQuery("?" + keep.toString()); setKey(k => k + 1);
     } catch (e) { }
   }, []);

@@ -14,5 +14,12 @@ const NATIVE = (() => {
     // Android：カメラ・マイクの許可を 殻で先にもらう（WebView の中だけでは 許可の画面が出ない）
     async media() { if (!this.android) return; post({ t: "needMedia" }); await wait("media", 60000); },
     open(url) { post({ t: "open", url }); },
+    // 通知のトークン（アプリで 通知を許可したときだけ）。ask=true で 許可を聞く
+    async pushToken(ask) {
+      if (!on || !window.RVNative.push) return null;
+      post({ t: ask ? "needPush" : "pushIfGranted" });
+      const r = await Promise.race([wait("token", 15000), wait("denied", 15000)]);
+      return r && r.t === "token" ? r.expo : null;
+    },
   };
 })();

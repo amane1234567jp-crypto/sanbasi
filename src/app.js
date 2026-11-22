@@ -239,10 +239,18 @@
       else {
         const free = freeSeats(), want = Math.min(2, Math.max(1, m.seats | 0));
         if (free.length < want) { NET.sendTo(peer, { t: "full", free: free.length }); return; }
-        roster.push({ role: "guest", dev: m.dev, peer, seats: free.slice(0, want), online: true, names: (m.names || []).slice(0, want).map(s => String(s).slice(0, 12)) });
+        roster.push({ role: "guest", dev: m.dev, peer, seats: free.slice(0, want), online: true, names: (m.names || []).slice(0, want).map(s => String(s).slice(0, 12)), pid: typeof m.pid === "string" ? m.pid.slice(0, 64) : "" });
       }
-      if (!started && !freeSeats().length) { started = true; hideOverlay(); setTimeout(() => { SFX.sparkle(); banner("そろったね！ はじめよう", 1400).then(() => { SFX.turn(); banner(`${chip(S.turn)} ${esc(who(S.turn))} から`, 1100); }); }, 300); }
+      const iv = invited.find(x => x.pid === m.pid); if (iv) iv.st = "in";
+      if (!started && !freeSeats().length) { started = true; hideOverlay(); clearTimeout(inviteT); autoRegister(); setTimeout(() => { SFX.sparkle(); banner("そろったね！ はじめよう", 1400).then(() => { SFX.turn(); banner(`${chip(S.turn)} ${esc(who(S.turn))} から`, 1100); }); }, 300); }
       publish(); videoLabels(); seats(); showHints();
+    }
+    if (m.t === "decline") {
+      const x = invited.find(y => y.pid === m.pid), nm = x ? pnames(x) : (m.names || []).join("・") || "あいて";
+      if (x) x.st = "no";
+      SFX.ng(); banner(`${esc(nm)} は いまは むり`, 1800); lobby();
+      if (invited.length && invited.every(y => y.st === "no")) note("よんだ ひとは みんな いまは むり でした。「ほかの ひとも よぶ」か、メニューから もどってね");
+      return;
     }
     if (m.t === "move") {
       const who = roster.find(x => x.peer === peer);
@@ -323,7 +331,7 @@
     game = m.game; first = m.first; hist = m.hist.slice();
     if (changed || !S) { S = SB.replay(hist, first); $("sheet").classList.remove("show"); shownOver = ""; layout(); }
     seats(); showHints();
-    if (!wasStarted && started) { SFX.sparkle(); banner("そろったね！ はじめよう", 1400).then(() => { SFX.turn(); banner(`${chip(S.turn)} ${esc(who(S.turn))} から`, 1100); }); }
+    if (!wasStarted && started) { autoRegister(); SFX.sparkle(); banner("そろったね！ はじめよう", 1400).then(() => { SFX.turn(); banner(`${chip(S.turn)} ${esc(who(S.turn))} から`, 1100); }); }
     if (S.over) finish();
   }
   function rememberRoom() {
@@ -405,23 +413,129 @@
   function startScreen() {
     overlay(`<div class="card"><div class="logo">サン<span>バーシ</span></div>
       <button class="big1" id="goFar">とおくの ひとと あそぶ</button>
-      ${(CFG.rooms || []).map((x, k) => `<button class="big2 room" data-k="${k}">${esc(x.name)}の へやに はいる</button>`).join("")}
       <button class="big2" id="goNear">1だいで あそぶ</button>
       <div class="sub">とおくの ひとと：テレビでんわで かおを みながら あそべます</div>
       <button class="small" id="goSet">おとなの せってい</button><div class="ver">版 ${VERSION}</div></div>`);
     $("goSet").onclick = () => settings(startScreen);
-    document.querySelectorAll(".room").forEach(b => b.onclick = () => { const x = CFG.rooms[+b.dataset.k]; const q = new URLSearchParams(location.search); const ps = q.get("ps"); location.href = location.pathname + "?r=" + x.room + "&n=" + encodeURIComponent(x.name) + (ps ? "&ps=" + ps : ""); });
+    pollPending();
     $("goNear").onclick = () => { audio(); keepAwake(); mode = "solo"; mySeats = new Set([0, 1, 2]); started = true; hideOverlay(); newGame(); };
-    $("goFar").onclick = () => { audio(); keepAwake(); pickCount(n => askNames(n, names => startHost(n, names))); };
+    $("goFar").onclick = () => { audio(); keepAwake(); pickCount(n => askNames(n, names => chooser(n, names))); };
   }
+  /* ---------- とうろくした ひと と よびだし（2026-11-22 決定） ----------
+     とうろく：リンク1本（LINE のグループに送ってよい）。開いた人と さそった人が とうろくされる
+     よぶ：「だれと あそぶ？」で 3人になるまで えらぶ →「あそぼう！」→ えらんだ人 全員に 通知（アプリ）＋ LINE で しらせる
+     よばれた人：「はいる（1人／2人）」か「いまは むり」（さそった人の画面に すぐ出る）
+     いっしょに 3人で遊んだ人どうしは 自動で とうろく */
+  let screenTok = 0;
+  const people = () => PEOPLE.list();
+  const pnames = x => (x.names || []).join("・") || "？";
+  // 自分のリンクで とうろくした人を 受けとる（ひらいている間は 10秒ごと）
+  let pollT = 0;
+  function pollPending() {
+    clearInterval(pollT);
+    const once = async () => { const got = await PEOPLE.pending(); if (got.length) { SFX.sparkle(); note(`<b>${got.map(esc).join("、")}</b> が とうろく しました！`); const c = $("chooserList"); if (c && chooserRedraw) chooserRedraw(); } };
+    once(); pollT = setInterval(() => { if (!NET.role || !started) once(); }, 10000);
+  }
+  let chooserRedraw = null;
+  function chooser(n, names) {
+    const tok = ++screenTok, sel = new Set();
+    PEOPLE.reg(false);
+    const draw = () => {
+      if (tok !== screenTok) return;
+      const list = people(), count = [...sel].reduce((s, pid) => s + ((list.find(x => x.pid === pid) || {}).names || [1]).length, 0), need = 3 - n - count;
+      overlay(`<div class="card chooser"><h2>だれと あそぶ？</h2>
+        <div class="sub big">${need > 0 ? `あと ${need}にん えらんでね` : "そろったよ！"}</div>
+        <div id="chooserList">${list.length ? list.map(x => `<button class="person ${sel.has(x.pid) ? "on" : ""}" data-pid="${x.pid}" ${!sel.has(x.pid) && need <= 0 ? "disabled" : ""}>${esc(pnames(x))}${x.names.length > 1 ? '<span class="cnt">（ふたり）</span>' : ""}</button>`).join("")
+          : `<div class="sub">まだ とうろくした ひとが いません。<br>「あたらしい ひとを とうろく」から さそってね</div>`}</div>
+        <button class="big1" id="goPlay" ${sel.size && need <= 0 ? "" : "disabled"}>あそぼう！</button>
+        <button class="big2" id="goReg">あたらしい ひとを とうろく</button>
+        <button class="small" id="goLink">とうろく しないで リンクで さそう</button>
+        <button class="small" id="goBack">もどる</button></div>`);
+      document.querySelectorAll(".person").forEach(b => b.onclick = () => { const p = b.dataset.pid; sel.has(p) ? sel.delete(p) : sel.add(p); draw(); });
+      $("goPlay").onclick = () => { if (!sel.size || need > 0) return; const inv = list.filter(x => sel.has(x.pid)).map(x => ({ pid: x.pid, names: x.names, st: "call" })); startHost(n, names, inv); };
+      $("goReg").onclick = () => regScreen(() => chooser(n, names));
+      $("goLink").onclick = () => startHost(n, names, []);
+      $("goBack").onclick = startScreen;
+    };
+    chooserRedraw = draw; draw(); pollPending();
+  }
+  // とうろく用の リンクを 送る画面（親が操作するので ふつうの漢字かなまじり）
+  async function regScreen(back) {
+    screenTok++;
+    PEOPLE.reg(true);
+    const me = (CFG.names || []).filter(Boolean).join("・") || "わたし", url = PEOPLE.regURL();
+    const text = `${me}です。3人で遊べるリバーシ「サンバーシ」で、いっしょに遊びませんか？ 下のリンクを開くと登録できます。\n${url}`;
+    let qr = ""; if (typeof qrcode !== "undefined") { const g = qrcode(0, "M"); g.addData(url); g.make(); qr = g.createSvgTag({ cellSize: 4, margin: 2 }); }
+    overlay(`<div class="card adult"><h2>相手を登録する</h2>
+      <div class="sub">このリンクを開いた人と、この端末が登録されます。<b>LINEのグループに送れば、何人でも</b>登録できます。送っても、すぐにはゲームは始まりません。</div>
+      <div class="msg">${esc(text).replace(/\n/g, "<br>")}</div>
+      <button class="btn line" id="regLine">LINEで送る</button>
+      <details><summary>ほかの方法で送る</summary><button class="small" id="regCopy">文面をコピー</button><div class="qr">${qr}</div><div class="sub">そばにいる人は QRコードを読み取ってください</div></details>
+      <button class="big2" id="regBack">閉じる</button></div>`);
+    $("regLine").onclick = () => shareText(text);
+    $("regCopy").onclick = () => navigator.clipboard.writeText(text).then(() => { $("regCopy").textContent = "コピーしました。貼り付けて送ってね"; }).catch(() => { });
+    $("regBack").onclick = back;
+    pollPending();
+  }
+  async function shareText(text) {
+    if (NATIVE.on) { await NATIVE.share(text); return; }
+    if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } }
+    location.href = "https://line.me/R/share?text=" + encodeURIComponent(text);
+  }
+  // とうろくリンクを ひらいた人
+  function regWelcome(fd, fn) {
+    if (fd === PEOPLE.pid) { overlay(`<div class="card"><h2>じぶんの リンクです</h2><div class="sub">このリンクは あいてに おくってね</div><button class="big2" id="rb">はじめの がめんへ</button></div>`); $("rb").onclick = toMenu; return; }
+    overlay(`<div class="card welcome"><div class="logo">サン<span>バーシ</span></div><h2>${esc(fn || "あいて")}さんと<br>登録します</h2>
+      <div class="sub">登録すると、次からアプリで呼び合えます</div>
+      <div class="lab">この端末で遊ぶのは？</div>
+      <div class="pick"><button id="p1">1人</button><button id="p2">2人</button></div></div>`);
+    const go = k => askNames(k, async names => {
+      overlay(`<div class="card"><h2>登録しています…</h2></div>`);
+      await PEOPLE.reg(true); const r = await PEOPLE.accept(fd, names);
+      PEOPLE.add(fd, (fn || "").split("・"));
+      overlay(`<div class="card"><h2>${esc(fn || "あいて")}さんと<br>登録しました！</h2>
+        <div class="sub">${r && r.ok ? "" : "（相手への知らせは 届かなかったかもしれません。いっしょに遊べば 自動で登録されます）"}</div>
+        <button class="big1" id="rb">はじめの がめんへ</button></div>`);
+      SFX.sparkle(); $("rb").onclick = toMenu;
+    });
+    $("p1").onclick = () => { audio(); go(1); }; $("p2").onclick = () => { audio(); go(2); };
+  }
+  // いっしょに 3人で遊んだ人どうしは 自動で とうろく
+  function autoRegister() {
+    let added = 0;
+    for (const r of roster) if (r.pid && r.pid !== PEOPLE.pid && PEOPLE.add(r.pid, r.names)) added++;
+    if (added) PEOPLE.reg(false);
+  }
+  // さそった人：えらんだ人を 通知で よぶ
+  let invited = [], inviteT = 0;
+  const inviteURLFor = () => { const myName = (roster[0] && roster[0].names || []).filter(Boolean).join("・"); return NET.inviteURL() + (myName ? "&n=" + encodeURIComponent(myName) : "") + "&inv=1&fp=" + PEOPLE.pid; };
+  async function callInvited(only) {
+    const myName = (roster[0] && roster[0].names || []).filter(Boolean).join("・") || "あいて", url = inviteURLFor();
+    for (const x of invited) {
+      if (only && x !== only) continue;
+      if (x.st === "in") continue;
+      x.st = "call"; lobby();
+      const r = await PEOPLE.call(x.pid, "サンバーシ", `${myName}が さそっています。タップして はいってね`, url);
+      x.st = r && r.ok ? "sent" : "nopush"; lobby();
+    }
+  }
+  const ST = { call: "よびだし中…", sent: "しらせました", nopush: "通知が とどきません", in: "はいった！", no: "いまは むり" };
   const hostName = (new URLSearchParams(location.search).get("n") || "").slice(0, 20);
+  const isInv = new URLSearchParams(location.search).get("inv") === "1";
   // さそわれた側：大きな字で 手順を2つだけ
   function welcome() {
     overlay(`<div class="card welcome"><div class="logo">サン<span>バーシ</span></div><h2>${hostName ? esc(hostName) + "さんからの<br>" : ""}お誘いです</h2>
       <ol><li>この端末で遊ぶ人数を選ぶ</li><li>カメラとマイクを「許可」する</li></ol>
       <div class="pick" id="joinPick"><button id="p1">1人</button><button id="p2">2人</button></div>
-      <div class="sub">2人で1台を使うときは「2人」</div></div>`);
+      <div class="sub">2人で1台を使うときは「2人」</div>
+      ${isInv ? '<button class="big2" id="pNo">いまは むり</button>' : ""}</div>`);
     const go = n => askNames(n, names => join(n, names));
+    if ($("pNo")) $("pNo").onclick = async () => {
+      audio(); overlay(`<div class="card"><h2>つたえています…</h2></div>`);
+      const ok = await NET.decline((CFG.names || []).filter(Boolean));
+      overlay(`<div class="card"><h2>${ok ? `${esc(hostName || "さそった人")}に<br>つたえました` : "つたえられませんでした"}</h2><div class="sub">${ok ? "またね！" : "さそった人は もう まっていないようです"}</div><button class="big2" id="rb">はじめの がめんへ</button></div>`);
+      $("rb").onclick = toMenu;
+    };
     $("p1").onclick = () => { audio(); keepAwake(); go(1); }; $("p2").onclick = () => { audio(); keepAwake(); go(2); };
   }
   const JOIN_KEY = "sanbasi-join";
@@ -452,14 +566,21 @@
     $("p2").onclick = () => { audio(); go(2); };
   }
   let hostSid = "", guestSid = "";
-  async function startHost(n, names) {
+  async function startHost(n, names, inv) {
+    screenTok++;
     hostSid = Math.random().toString(36).slice(2, 10);
-    mode = "host"; roster = [{ role: "host", dev: NET.dev, peer: null, seats: n === 2 ? [0, 1] : [0], online: true, names }];
+    invited = inv || [];
+    mode = "host"; roster = [{ role: "host", dev: NET.dev, peer: null, seats: n === 2 ? [0, 1] : [0], online: true, names, pid: PEOPLE.pid }];
     mySeats = new Set(roster[0].seats); started = false;
     newGame(); lobby();
     await NET.host();
     roster[0].peer = "sanbasi-rm-" + NET.room;
     lobby(); videoLabels();
+    if (invited.length) {
+      callInvited();
+      // 10分 そろわなければ おわり
+      clearTimeout(inviteT); inviteT = setTimeout(() => { if (!started) endBy([], "10ぷん まっても そろわなかったので おわります"); }, 600000);
+    }
   }
   function lobby() {
     if (started || mode === "solo") return;
@@ -467,18 +588,31 @@
     const url = NET.room ? NET.inviteURL() + (myName ? "&n=" + encodeURIComponent(myName) : "") : "";
     const seatLine = k => { const x = roster.find(r => r.seats.includes(k)); return `<div class="row">${chip(k)}${NAMES[k]}<span class="n">${x ? esc(nameOf(k) || "") + (x.dev === NET.dev ? "（このスマホ）" : "") : "まっています…"}</span></div>`; };
     let qr = "";
-    if (url && mode === "host" && typeof qrcode !== "undefined") { const g = qrcode(0, "M"); g.addData(url); g.make(); qr = g.createSvgTag({ cellSize: 4, margin: 2 }); }
+    if (url && mode === "host" && typeof qrcode !== "undefined") { const g = qrcode(0, "M"); g.addData(invited.length ? inviteURLFor() : url); g.make(); qr = g.createSvgTag({ cellSize: 4, margin: 2 }); }
     overlay(`<div class="card"><h2>${mode === "host" ? "あいてを よぶ" : "つながりました"}</h2>
       ${[0, 1, 2].map(seatLine).join("")}
       <div class="sub">3にん そろうと はじまります</div>
-      ${mode === "host" ? (url ? `<div class="qr">${qr}</div>
+      ${mode === "host" && invited.length ? `<div class="lab">よんだ ひと</div>${invited.map((x, k) => `<div class="row inv ${x.st}">${esc(pnames(x))}<span class="n">${ST[x.st] || ""}</span></div>`).join("")}
+        <button class="btn line" id="lineBtn">LINEで しらせる</button>
+        <button class="small" id="recall">もういちど 通知で しらせる</button>
+        <button class="small" id="addMore">ほかの ひとも よぶ</button>
+        <details><summary>そばに いる ひとには QRコード</summary><div class="qr">${qr}</div><button class="small" id="copy">リンクを コピー</button></details>` :
+       mode === "host" ? (url ? `<div class="qr">${qr}</div>
         <button class="btn line" id="lineBtn">LINEで おくる</button>
         <button class="btn" id="copy">リンクを コピー</button>
         <div class="sub">まえに あそんだ ひとは、じぶんの がめんの「${esc(myName || "あなた")}の へやに はいる」で はいれます（リンクは まえと おなじ）</div>` : `<div class="sub">へやを つくっています…</div>`) : ``}
       </div>`);
-    const lb = $("lineBtn"), text = "サンバーシで あそぼう！\n" + url;
+    const myN = (roster[0] && roster[0].names || []).filter(Boolean).join("・");
+    const lb = $("lineBtn"), text = invited.length ? `${myN}です。いまサンバーシで遊べるよ！ このリンクをタップしてね。\n${inviteURLFor()}` : "サンバーシで あそぼう！\n" + url;
     // 共有画面（LINE をえらぶ）。送ると自動でこの画面に戻る。共有画面がない端末は LINE を直接ひらく
-    if (lb) lb.onclick = async () => { if (NATIVE.on) { await NATIVE.share(text); return; } if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } } location.href = "https://line.me/R/share?text=" + encodeURIComponent(text); };
+    if (lb) lb.onclick = () => shareText(text);
+    if ($("recall")) $("recall").onclick = () => callInvited();
+    if ($("addMore")) $("addMore").onclick = () => {
+      const rest = people().filter(x => !invited.some(y => y.pid === x.pid));
+      overlay(`<div class="card"><h2>ほかの ひとも よぶ</h2>${rest.length ? rest.map(x => `<button class="person" data-pid="${x.pid}">${esc(pnames(x))}</button>`).join("") : '<div class="sub">ほかに とうろくした ひとは いません</div>'}<button class="big2" id="amBack">もどる</button></div>`);
+      document.querySelectorAll(".person").forEach(b => b.onclick = () => { const x = rest.find(y => y.pid === b.dataset.pid); const row = { pid: x.pid, names: x.names, st: "call" }; invited.push(row); lobby(); callInvited(row); });
+      $("amBack").onclick = lobby;
+    };
     const cp = $("copy"); if (cp) cp.onclick = () => { navigator.clipboard.writeText(url).then(() => { cp.textContent = "コピーしました"; }).catch(() => { cp.textContent = url; }); };
   }
 
@@ -524,7 +658,8 @@
       <div class="lab">つながりかた（テスト用）</div><div class="opts">${opt("relay", 0, "ふつう")}${opt("relay", 1, "中継サーバーだけ")}</div>
       <div class="sub" id="linkInfo">${NET.role ? "いまの つながり：しらべています…" : "「中継サーバーだけ」で つながれば、家の外どうしでも つながります"}</div>
       <button class="small" id="sSnd">おとの テスト（なおす）</button><div class="sub" id="sndInfo">${soundInfo()}</div>
-      ${(CFG.rooms || []).length ? `<div class="lab">はいった ことの ある へや</div>${CFG.rooms.map((x, k) => `<div class="row">${esc(x.name)}<button class="small rmDel" data-k="${k}">けす</button></div>`).join("")}` : ""}
+      <div class="lab">とうろくした ひと</div>${people().length ? people().map(x => `<div class="row">${esc(pnames(x))}<button class="small pDel" data-pid="${x.pid}">けす</button></div>`).join("") : '<div class="sub">まだ いません</div>'}
+      <button class="small" id="sReg">相手を登録する（リンクを送る）</button>
       <button class="small" id="sName">なまえを かえる（いま：${esc((CFG.names || []).filter(Boolean).join("・") || "まだ")}）</button>
       <button class="small" id="sRoom">あたらしい へやに する</button><div class="sub">まえに おくった リンクは つかえなくなります</div>
       <div class="ver">版 ${VERSION}</div>
@@ -532,7 +667,8 @@
     document.querySelectorAll(".opt").forEach(b => b.onclick = () => { CFG[b.dataset.k] = +b.dataset.v; saveCFG(); settings(back); });
     $("sX").onclick = $("sClose").onclick = () => back ? back() : hideOverlay();
     $("sSnd").onclick = () => { if (ctx) rebuildAudio("テスト"); else audio(); setTimeout(() => { SFX.place(); setTimeout(() => SFX.flip(1, 1), 220); }, 60); setTimeout(() => { $("sndInfo").textContent = soundInfo(); }, 600); };
-    document.querySelectorAll(".rmDel").forEach(b => b.onclick = () => { CFG.rooms.splice(+b.dataset.k, 1); saveCFG(); settings(back); });
+    document.querySelectorAll(".pDel").forEach(b => b.onclick = () => { if (b.dataset.armed) { PEOPLE.remove(b.dataset.pid); settings(back); } else { b.dataset.armed = 1; b.textContent = "もういちど おすと けす"; } });
+    $("sReg").onclick = () => regScreen(() => settings(back));
     $("sName").onclick = () => askNames((CFG.names || []).filter(Boolean).length === 2 ? 2 : 1, () => settings(back));
     $("sRoom").onclick = () => { NET.newRoom(); $("sRoom").textContent = "つぎに よぶときから あたらしい へやです"; };
     if (NET.role) NET.linkType().then(x => { const e = $("linkInfo"); if (e) e.textContent = "いまの つながり：" + x; });
@@ -555,7 +691,10 @@
 
   window.SANBASI = { get state() { return S; }, get busy() { return busy; }, get mode() { return mode; }, get mySeats() { return [...mySeats]; }, get started() { return started; }, get game() { return game; }, get hist() { return hist.slice(); }, play, nextGame };
   S = SB.replay([], 0); layout(); seats();
-  if (mode === "guest") {
+  const Q0 = new URLSearchParams(location.search);
+  PEOPLE.reg(false);   // 名前と（アプリで許可ずみなら）通知の宛先を 中継に
+  if (Q0.get("m") === "reg" && Q0.get("fd")) regWelcome(Q0.get("fd"), (Q0.get("fn") || "").slice(0, 30));
+  else if (mode === "guest") {
     let j = null; try { j = JSON.parse(sessionStorage.getItem(JOIN_KEY)); } catch (e) { }
     if (j && j.room === NET.room && Date.now() - j.at < 60000) join(j.n, j.names);   // 読みなおし：そのまま 元の席へ
     else welcome();

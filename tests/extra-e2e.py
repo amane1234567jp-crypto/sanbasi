@@ -12,7 +12,7 @@ async def main():
         b = await pw.chromium.launch(args=ARGS); errs = []
         hc = await b.new_context(viewport={"width": 390, "height": 844}, permissions=["camera", "microphone"])
         host = await hc.new_page(); host.on("pageerror", lambda e: errs.append(str(e)))
-        await host.goto(BASE); await host.click("#goFar"); await host.click("#p1"); await names(host, 1, "ホスト")
+        await host.goto(BASE); await host.click("#goFar"); await host.click("#p1"); await names(host, 1, "ホスト"); await host.click("#goLink")
         await host.wait_for_function("NET.room && NET.peer && NET.peer.open", timeout=20000)
         url = await host.evaluate("NET.inviteURL()")
         gc = await b.new_context(viewport={"width": 390, "height": 844}, permissions=["camera", "microphone"])
@@ -35,19 +35,11 @@ async def main():
         print("やめる知らせ:", await host.evaluate("document.querySelector('#banner').textContent"))
         await host.wait_for_function("!location.search.includes('r=') && document.querySelector('#goFar')", timeout=20000)
         print("ホストは はじめの画面に もどった: OK")
-        # 2回目：リンクなしで「○○の へやに はいる」
-        await g1.wait_for_function("document.querySelector('.room')", timeout=20000)
-        print("ゲストの はじめの画面:", await g1.evaluate("document.querySelector('.room').textContent"))
-        await host.click("#goFar"); await host.click("#p1"); await host.click("#nmOk")
-        await host.wait_for_function("NET.peer && NET.peer.open", timeout=20000)
-        await g1.click(".room"); await g1.click("#p2"); await g1.click("#nmOk")
-        await host.wait_for_function("SANBASI.started", timeout=30000)
-        print("リンクなしで また つながった: OK  札:", await host.evaluate("[...document.querySelectorAll('.seat .pn')].map(e=>e.textContent).join(',')"))
-        await host.wait_for_timeout(2500); await host.screenshot(path="/home/claude/sanbasi/shots/names.png")
+        # （2回目からは「だれと あそぶ？」で呼ぶ：tests/people-e2e.py）
         # カメラなし（許可しない）
         nb = await pw.chromium.launch(args=["--autoplay-policy=no-user-gesture-required"])
         nc = await nb.new_context(viewport={"width": 390, "height": 844})
-        np_ = await nc.new_page(); await np_.goto(BASE); await np_.click("#goFar"); await np_.click("#p1"); await names(np_, 1, "テスト")
+        np_ = await nc.new_page(); await np_.goto(BASE); await np_.click("#goFar"); await np_.click("#p1"); await names(np_, 1, "テスト"); await np_.click("#goLink")
         await np_.wait_for_function("document.querySelector('#note').classList.contains('show')", timeout=20000)
         await np_.screenshot(path="/home/claude/sanbasi/shots/nocam.png")
         print("カメラなしの案内: OK")

@@ -147,7 +147,7 @@ const NET = (() => {
   // ---- ゲスト ----
   let hello = null;
   async function guest(seats, names) {
-    N.role = "guest"; hello = { t: "hello", dev, seats, names: names || [] };
+    N.role = "guest"; hello = { t: "hello", dev, seats, names: names || [], pid: PEOPLE.pid };
     await camera();
     const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())], iceTransportPolicy: CFG.relay ? "relay" : "all" } });
     N.peer = makePeer(null, opt);
@@ -181,6 +181,19 @@ const NET = (() => {
     setTimeout(() => { if (!N.open && conn === N.hostConn) { try { conn.close(); } catch (e) { } N.hostConn = null; dial(); } }, 7000);
   }
   N.hello = (seats, names) => { if (hello) { hello.seats = seats; if (names) hello.names = names; N.send(hello); } };
+  // さそいを ことわる（「いまは むり」）：ホストの部屋に ちょっとだけ つないで 伝える
+  N.decline = async names => {
+    const opt = Object.assign({}, OPT, { config: { iceServers: STUN } });
+    const p = makePeer(null, opt);
+    const opened = await new Promise(res => { p.on("open", () => res(true)); p.on("error", () => res(false)); setTimeout(() => res(false), 8000); });
+    let sent = false;
+    if (opened) {
+      const c = p.connect(idOf(N.room), { serialization: "json", reliable: true });
+      sent = await new Promise(res => { c.on("open", () => { try { c.send({ t: "decline", pid: PEOPLE.pid, names }); res(true); } catch (e) { res(false); } }); c.on("error", () => res(false)); setTimeout(() => res(false), 8000); });
+    }
+    setTimeout(() => { try { p.destroy(); } catch (e) { } }, 1500);
+    return sent;
+  };
   N.send = m => { if (N.hostConn && N.open) try { N.hostConn.send(m); } catch (e) { } };
 
   // 生きているかの合図（12秒 便りがなければ 切れたとみなす）

@@ -147,6 +147,18 @@ body.call .videos { display: flex; }
 .tile .tn { font-size: 10px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000; margin: 0 4px 0 2px; }
 .ov input.nm { display: block; width: 100%; font: inherit; font-size: 20px; padding: 12px; margin-top: 10px; border: 2px solid #E9E0CC; border-radius: 12px; background: #fff; }
 .ov .card .row .small { margin: 0 0 0 auto; }
+.chooser .sub.big { font-size: 18px; font-weight: 800; color: var(--ink); margin-bottom: 8px; }
+.ov .card .person { display: block; width: 100%; margin: 8px 0 0; font: inherit; font-size: 20px; font-weight: 800; padding: 14px; border-radius: 14px; border: 3px solid #E9E0CC; background: #FFFDF6; color: var(--ink); box-shadow: none; }
+.ov .card .person.on { border-color: #37935F; background: #E3F3E9; }
+.ov .card .person.on::before { content: "✓ "; color: #37935F; }
+.ov .card .person:disabled { opacity: .45; }
+.ov .card .person .cnt { font-size: 14px; color: #6E6A75; }
+.ov .card button:disabled { opacity: .4; }
+.ov .adult .msg { text-align: left; font-size: 14px; line-height: 1.6; background: #F5F0E4; border-radius: 12px; padding: 10px 12px; margin: 10px 0; word-break: break-all; }
+.ov details { margin-top: 10px; font-size: 14px; color: #6E6A75; }
+.ov details summary { cursor: pointer; }
+.ov .row.inv.in .n { color: #37935F; } .ov .row.inv.no .n { color: #C0392B; } .ov .row.inv.nopush .n { color: #C79A12; }
+.ov .lab { text-align: left; font-weight: 800; margin: 14px 0 6px; }
 .welcome h2 { font-size: 28px; margin: 0 0 10px; }
 .welcome ol { text-align: left; font-size: 20px; font-weight: 700; line-height: 1.7; padding-left: 1.4em; margin: 0 0 16px; }
 .welcome .pick button { font-size: 26px; }
@@ -175,6 +187,7 @@ __RULES__
 <script>
 __SHIM__
 __NATIVE__
+__PEOPLE__
 __SFX__
 __FX__
 __NET__
