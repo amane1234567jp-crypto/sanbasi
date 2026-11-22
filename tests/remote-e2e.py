@@ -45,7 +45,7 @@ async def run(counts):
         print("履歴がそろっている:", len(set(hs)) == 1, len(hs[0].split(',')), "手")
         await host.screenshot(path=f"shots/remote{len(allp)}-mid-host.png"); await guests[0].screenshot(path=f"shots/remote{len(allp)}-mid-guest.png")
         # 再接続：ゲスト0 を読みなおして 同じ席に戻るか
-        await guests[0].reload(); await guests[0].click("#p1" if counts[1] == 1 else "#p2"); await guests[0].click("#nmOk")
+        await guests[0].reload()   # 60秒以内の読みなおしは 聞きなおさず 元の席へ
         await guests[0].wait_for_function("SANBASI.started && SANBASI.hist.length>0", timeout=40000)
         print("読みなおし後の席:", await guests[0].evaluate("SANBASI.mySeats"), "履歴:", (await guests[0].evaluate("SANBASI.hist.join(',')")) == hs[0])
         print("エラー:", errs)

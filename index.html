@@ -3156,7 +3156,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 // iPadOS 15.4 より前の Safari 向け
 if (!Array.prototype.at) Array.prototype.at = function (n) { n = Math.trunc(n) || 0; if (n < 0) n += this.length; return this[n]; };
 
-const VERSION = "11/22 11:06 297fe58";
+const VERSION = "11/22 12:32 f483b28";
 /* ---------- サンバーシ 画面と進行 ----------
    1台で3人（となりの ひとと）／テレビ電話で遠隔（とおくの ひとと）。
    効果音（sfx.js）と はでな演出（fx.js）は テレビ電話リバーシのものを そのまま使う。 */
@@ -3386,7 +3386,7 @@ const VERSION = "11/22 11:06 297fe58";
   const freeSeats = () => [0, 1, 2].filter(k => !roster.some(x => x.seats.includes(k)));
   function publish() {
     if (mode !== "host") return;
-    NET.broadcast({ t: "state", roster, hist, game, first, wins, totals, started });
+    NET.broadcast({ t: "state", roster, hist, game, first, wins, totals, started, sid: hostSid });
     lobby();
   }
   function hostMsg(m, peer) {
@@ -3394,7 +3394,7 @@ const VERSION = "11/22 11:06 297fe58";
       let me = roster.find(x => x.dev === m.dev);
       // 同じリンクを2つの画面で開いたとき：いまの画面が元気なら（8秒以内に便りがある）あとの画面は ことわる
       if (me && me.peer !== peer && me.online && Date.now() - (NET.heard.get(me.peer) || 0) < 8000 && NET.conns.has(me.peer)) { NET.sendTo(peer, { t: "busy" }); return; }
-      if (me) { me.peer = peer; me.online = true; if (m.names) me.names = m.names.slice(0, me.seats.length).map(s => String(s).slice(0, 12)); }
+      if (me) { me.peer = peer; me.online = true; backFrom(m.dev); if (m.names) me.names = m.names.slice(0, me.seats.length).map(s => String(s).slice(0, 12)); }
       else {
         const free = freeSeats(), want = Math.min(2, Math.max(1, m.seats | 0));
         if (free.length < want) { NET.sendTo(peer, { t: "full", free: free.length }); return; }
@@ -3405,18 +3405,51 @@ const VERSION = "11/22 11:06 297fe58";
     }
     if (m.t === "move") {
       const who = roster.find(x => x.peer === peer);
-      if (!who || busy || m.g !== game || m.n !== hist.length || !S || S.over || !who.seats.includes(S.turn) || !SB.flipsFor(S, S.turn, m.i).length) { NET.sendTo(peer, { t: "state", roster, hist, game, first, wins, totals, started }); return; }
+      if (!who || busy || m.g !== game || m.n !== hist.length || !S || S.over || !who.seats.includes(S.turn) || !SB.flipsFor(S, S.turn, m.i).length) { NET.sendTo(peer, { t: "state", roster, hist, game, first, wins, totals, started, sid: hostSid }); return; }
       commit(m.i);
     }
     if (m.t === "next" && m.g === game) nextGame();
     if (m.t === "quit") { const who = roster.find(x => x.peer === peer); NET.broadcast({ t: "quit", seats: who ? who.seats : [] }); quitByOther(who ? who.seats : []); }
   }
-  NET.on("left", peer => { const x = roster.find(r => r.peer === peer); if (x) x.online = false; publish(); videoLabels(); });
+  /* だれかが いなくなったとき（2026-11-22 決定）：30秒は まつ（電話・LINE・電波の切れめ）。
+     もどれば つづき。もどらなければ その対局は おわり → 全員 はじめの画面へ。
+     親（さそった人）が いなくなったときも 同じ（ゲスト側で 30秒 まつ）。 */
+  const GRACE = 30000;
+  const waiting = new Map();   // dev → { seats, until }
+  let waitTick = 0;
+  function showWaiting() {
+    clearInterval(waitTick);
+    const draw = () => {
+      const now = Date.now(), list = [...waiting.values()];
+      if (!list.length) { $("netNote").classList.remove("show"); clearInterval(waitTick); return; }
+      $("netNote").innerHTML = list.map(w => `${w.seats.map(chip).join("")} ${esc(w.seats.map(k => nameOf(k) || NAMES[k]).join("・"))} を まっています（あと ${Math.max(0, Math.ceil((w.until - now) / 1000))}びょう）`).join("<br>");
+      $("netNote").classList.add("show");
+    };
+    draw(); waitTick = setInterval(draw, 1000);
+  }
+  NET.on("left", peer => {
+    const x = roster.find(r => r.peer === peer); if (!x) return;
+    x.online = false;
+    if (!started) { roster = roster.filter(r => r !== x); publish(); videoLabels(); return; }   // はじまる前なら 席を あける
+    const w = { seats: x.seats.slice(), until: Date.now() + GRACE };
+    waiting.set(x.dev, w);
+    w.timer = setTimeout(() => {
+      if (waiting.get(x.dev) !== w) return;
+      NET.broadcast({ t: "end", seats: w.seats, why: "left" });
+      endBy(w.seats, "が もどらないので おわります");
+    }, GRACE);
+    NET.broadcast({ t: "wait", seats: w.seats, until: w.until });
+    showWaiting(); publish(); videoLabels();
+  });
+  function backFrom(dev) { const w = waiting.get(dev); if (!w) return; clearTimeout(w.timer); waiting.delete(dev); NET.broadcast({ t: "waitEnd", seats: w.seats }); showWaiting(); }
 
   // ---- 遠隔：ゲスト ----
   function guestMsg(m) {
     if (m.t === "busy") { NET.stop(); overlay(`<div class="card"><h2>ほかの がめんで<br>つながっています</h2><div class="sub">この がめんは とじてください</div></div>`); return; }
     if (m.t === "quit") { quitByOther(m.seats || []); return; }
+    if (m.t === "end") { endBy(m.seats || [], m.why === "left" ? "が もどらないので おわります" : "が いなくなったので おわります"); return; }
+    if (m.t === "wait") { waiting.set("s" + m.seats.join(""), { seats: m.seats, until: m.until }); showWaiting(); return; }
+    if (m.t === "waitEnd") { waiting.delete("s" + m.seats.join("")); showWaiting(); return; }
     if (m.t === "full") {
       pickCount(n => { overlay(`<div class="card"><h2>つないでいます…</h2></div>`); NET.hello(n, (CFG.names || []).slice(0, n)); }, m.free ? `あと ${m.free}にん しか はいれません` : "もう いっぱいです");
       if (!m.free) $("joinPick").style.display = "none"; else if (m.free < 2) $("p2").style.display = "none";
@@ -3432,6 +3465,9 @@ const VERSION = "11/22 11:06 297fe58";
     rememberRoom();
     const me = roster.find(x => x.peer === NET.peer.id) || roster.find(x => x.dev === NET.dev);
     mySeats = new Set(me ? me.seats : []);
+    // 親が 読みなおして あたらしく はじめた（対局が消えた）→ この対局は おわり
+    if (started && guestSid && m.sid && m.sid !== guestSid) { const h = roster.find(x => x.role === "host"); endBy(h ? h.seats : [], "の がめんが はじめからに なったので おわります"); return; }
+    if (m.started && m.sid) guestSid = m.sid;
     const wasStarted = started; started = m.started;
     if (started) hideOverlay(); else lobby();
     videoLabels();
@@ -3457,8 +3493,20 @@ const VERSION = "11/22 11:06 297fe58";
   }
   NET.on("msg", (m, peer) => mode === "host" ? hostMsg(m, peer) : guestMsg(m));
   let wasLost = false;
-  NET.on("lost", () => { wasLost = true; $("netNote").textContent = "つなぎなおしています… ちょっと まってね"; $("netNote").classList.add("show"); });
-  NET.on("open", () => { $("netNote").classList.remove("show"); if (wasLost && started) { wasLost = false; banner("つながったよ！ つづきから やろう", 1600); } });
+  let lostTimer = 0;
+  NET.on("lost", () => {
+    wasLost = true;
+    if (!started) { $("netNote").textContent = "つなぎなおしています… ちょっと まってね"; $("netNote").classList.add("show"); return; }
+    const h = roster.find(x => x.role === "host"), seatsOf = h ? h.seats : [];
+    waiting.set("host", { seats: seatsOf, until: Date.now() + GRACE }); showWaiting();
+    clearTimeout(lostTimer);
+    lostTimer = setTimeout(() => { if (!NET.open) endBy(seatsOf, "と つながらなくなったので おわります"); }, GRACE);
+  });
+  NET.on("open", () => {
+    clearTimeout(lostTimer); waiting.delete("host"); showWaiting();
+    $("netNote").classList.remove("show");
+    if (wasLost && started) { wasLost = false; banner("つながったよ！ つづきから やろう", 1600); }
+  });
 
   // ---- 映像 ----
   const tiles = new Map();
@@ -3532,9 +3580,15 @@ const VERSION = "11/22 11:06 297fe58";
       <ol><li>この端末で遊ぶ人数を選ぶ</li><li>カメラとマイクを「許可」する</li></ol>
       <div class="pick" id="joinPick"><button id="p1">1人</button><button id="p2">2人</button></div>
       <div class="sub">2人で1台を使うときは「2人」</div></div>`);
-    const go = n => askNames(n, names => { overlay(`<div class="card"><h2>つないでいます…</h2><div class="sub" id="waitHint"></div></div>`); NET.guest(n, names);
-      setTimeout(() => { const h = $("waitHint"); if (h && !started) h.innerHTML = `なかなか つながらないときは、${esc(hostName || "さそった人")}の 端末で「あいてを よぶ」の画面が ひらいているか たしかめてね`; }, 30000); });
+    const go = n => askNames(n, names => join(n, names));
     $("p1").onclick = () => { audio(); keepAwake(); go(1); }; $("p2").onclick = () => { audio(); keepAwake(); go(2); };
+  }
+  const JOIN_KEY = "sanbasi-join";
+  function join(n, names) {
+    try { sessionStorage.setItem(JOIN_KEY, JSON.stringify({ room: NET.room, n, names, at: Date.now() })); } catch (e) { }
+    setInterval(() => { try { const j = JSON.parse(sessionStorage.getItem(JOIN_KEY)); if (j) { j.at = Date.now(); sessionStorage.setItem(JOIN_KEY, JSON.stringify(j)); } } catch (e) { } }, 5000);
+    overlay(`<div class="card"><h2>つないでいます…</h2><div class="sub" id="waitHint"></div></div>`); NET.guest(n, names);
+      setTimeout(() => { const h = $("waitHint"); if (h && !started) h.innerHTML = `なかなか つながらないときは、${esc(hostName || "さそった人")}の 端末で「あいてを よぶ」の画面が ひらいているか たしかめてね`; }, 30000);
   }
   // 名前（この端末で遊ぶ人の数だけ）。おなじ よびかたの人がいても わかるように 自分で入れてもらう
   function askNames(n, go) {
@@ -3556,7 +3610,9 @@ const VERSION = "11/22 11:06 297fe58";
     $("p1").onclick = () => { audio(); go(1); };
     $("p2").onclick = () => { audio(); go(2); };
   }
+  let hostSid = "", guestSid = "";
   async function startHost(n, names) {
+    hostSid = Math.random().toString(36).slice(2, 10);
     mode = "host"; roster = [{ role: "host", dev: NET.dev, peer: null, seats: n === 2 ? [0, 1] : [0], online: true, names }];
     mySeats = new Set(roster[0].seats); started = false;
     newGame(); lobby();
@@ -3573,10 +3629,11 @@ const VERSION = "11/22 11:06 297fe58";
     if (url && mode === "host" && typeof qrcode !== "undefined") { const g = qrcode(0, "M"); g.addData(url); g.make(); qr = g.createSvgTag({ cellSize: 4, margin: 2 }); }
     overlay(`<div class="card"><h2>${mode === "host" ? "あいてを よぶ" : "つながりました"}</h2>
       ${[0, 1, 2].map(seatLine).join("")}
+      <div class="sub">3にん そろうと はじまります</div>
       ${mode === "host" ? (url ? `<div class="qr">${qr}</div>
         <button class="btn line" id="lineBtn">LINEで おくる</button>
         <button class="btn" id="copy">リンクを コピー</button>
-        <div class="sub">まえに あそんだ ひとは、じぶんの がめんの「${esc(myName || "あなた")}の へやに はいる」で はいれます（リンクは まえと おなじ）</div>` : `<div class="sub">へやを つくっています…</div>`) : `<div class="sub">みんなが そろうと はじまります</div>`}
+        <div class="sub">まえに あそんだ ひとは、じぶんの がめんの「${esc(myName || "あなた")}の へやに はいる」で はいれます（リンクは まえと おなじ）</div>` : `<div class="sub">へやを つくっています…</div>`) : ``}
       </div>`);
     const lb = $("lineBtn"), text = "サンバーシで あそぼう！\n" + url;
     // 共有画面（LINE をえらぶ）。送ると自動でこの画面に戻る。共有画面がない端末は LINE を直接ひらく
@@ -3586,9 +3643,19 @@ const VERSION = "11/22 11:06 297fe58";
 
   // ---- メニュー：やめる／はじめから／せってい ----
   function toMenu() {
+    try { sessionStorage.removeItem(JOIN_KEY); } catch (e) { }
     try { NET.local && NET.local.getTracks().forEach(tr => tr.stop()); NET.peer && NET.peer.destroy(); } catch (e) { }
     const ps = new URLSearchParams(location.search).get("ps");   // 確認用の紹介役サーバーは引きつぐ
     location.replace(location.pathname + (ps ? "?ps=" + ps : ""));   // 読みなおすのが いちばん確実に まっさらに もどる
+  }
+  let ended = false;
+  async function endBy(seatsOf, text) {
+    if (ended) return; ended = true;
+    busy = true; showHints(); $("sheet").classList.remove("show");
+    for (const w of waiting.values()) clearTimeout(w.timer); waiting.clear(); showWaiting();
+    try { sessionStorage.removeItem(JOIN_KEY); } catch (e) { }
+    await banner(`${seatsOf.map(chip).join("")} ${seatsOf.map(k => esc(nameOf(k) || NAMES[k])).join("・") || "あいて"} ${text}`, 3200);
+    toMenu();
   }
   async function quitByOther(seatsOf) {
     busy = true; showHints(); $("sheet").classList.remove("show");
@@ -3647,7 +3714,11 @@ const VERSION = "11/22 11:06 297fe58";
 
   window.SANBASI = { get state() { return S; }, get busy() { return busy; }, get mode() { return mode; }, get mySeats() { return [...mySeats]; }, get started() { return started; }, get game() { return game; }, get hist() { return hist.slice(); }, play, nextGame };
   S = SB.replay([], 0); layout(); seats();
-  if (mode === "guest") welcome();
+  if (mode === "guest") {
+    let j = null; try { j = JSON.parse(sessionStorage.getItem(JOIN_KEY)); } catch (e) { }
+    if (j && j.room === NET.room && Date.now() - j.at < 60000) join(j.n, j.names);   // 読みなおし：そのまま 元の席へ
+    else welcome();
+  }
   else startScreen();
 })();
 
