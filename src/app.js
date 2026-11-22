@@ -421,7 +421,7 @@
       </div>`);
     const lb = $("lineBtn"), text = "サンバーシで あそぼう！\n" + url;
     // 共有画面（LINE をえらぶ）。送ると自動でこの画面に戻る。共有画面がない端末は LINE を直接ひらく
-    if (lb) lb.onclick = async () => { if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } } location.href = "https://line.me/R/share?text=" + encodeURIComponent(text); };
+    if (lb) lb.onclick = async () => { if (NATIVE.on) { await NATIVE.share(text); return; } if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } } location.href = "https://line.me/R/share?text=" + encodeURIComponent(text); };
     const cp = $("copy"); if (cp) cp.onclick = () => { navigator.clipboard.writeText(url).then(() => { cp.textContent = "コピーしました"; }).catch(() => { cp.textContent = url; }); };
   }
 

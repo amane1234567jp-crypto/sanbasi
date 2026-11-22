@@ -43,6 +43,7 @@ const NET = (() => {
     const V = { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 12, max: 15 } };
     const A = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
     N.local = null; N.media = "";
+    await NATIVE.media();
     for (const [c, label] of [[{ video: V, audio: A }, "both"], [{ audio: A }, "audio"], [{ video: V }, "video"]]) {
       try { N.local = await navigator.mediaDevices.getUserMedia(c); N.media = label; break; } catch (e) { /* 次をためす */ }
     }
@@ -194,6 +195,8 @@ const NET = (() => {
   }, 4000);
 
   N.host = host; N.guest = guest;
-  N.inviteURL = () => location.origin + location.pathname + "?r=" + N.room + (ps ? "&ps=" + ps : "") + "&openExternalBrowser=1";
+  // アプリの中（http://127.0.0.1…）から送るリンクは 公開中の Web 版を さす
+  const PUBLIC = window.RVNative ? "https://amane1234567jp-crypto.github.io/sanbasi/" : location.origin + location.pathname;
+  N.inviteURL = () => PUBLIC + "?r=" + N.room + (ps ? "&ps=" + ps : "") + "&openExternalBrowser=1";
   return N;
 })();

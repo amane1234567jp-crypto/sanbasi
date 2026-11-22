@@ -39,3 +39,12 @@
 - ゲスト側は 入った部屋と さそった人の名前を覚える（CFG.rooms、5つまで）。次からは はじめの画面の「○○の へやに はいる」でリンクなしで入れる（部屋は端末に固定なので さそった人が「とおくの ひとと あそぶ」を押せば つながる）
 - 設定：はいった ことの ある へや の一覧と「けす」、なまえを かえる
 - テスト：extra-e2e.py に「やめたあと リンクなしで また つながる」を追加
+
+## 2026-11-22 独立したアプリにする（決定）
+- テレビ電話リバーシの中に入れる案は、公開中のアプリを壊すおそれ・直すたびに審査・1対1前提の登録の作りなおしが大きいので やめた。サンバーシは独立アプリ
+- 料金：当面は無料。アプリ名：「サンバーシ」
+- 殻（app/）はテレビ電話リバーシ（kotoba-tane/reversi/app）を写した：端末の中のサーバー（番号47913固定）・localStorage の控え（storeBridge）・版ごとのフォルダ・通知の受けとり・共有・画面を消さない・音の種類
+- bundle id / package：com.uchinoaji.sanbasi。Apple チーム・ASC の鍵 ID は うちのあじ と同じ（eas.json）。ascAppId は App Store Connect にアプリの枠を作ってから入れる
+- ページ ↔ 殻：src/native.js（共有・Android のカメラ許可）。アプリから送る招待リンクは 公開中の Web 版（GitHub Pages）をさす
+- ビルド：.github/workflows/sanbasi-app-eas.yml（app/BUILD。はじめてのとき EAS のプロジェクトを作る）、sanbasi-app-ios.yml（app/BUILD_IOS。GitHub の Mac で作って TestFlight へ）、sanbasi-app-android.yml（app/BUILD_APK。テスト用 APK）
+- 必要な鍵（このリポジトリの Secrets）：EXPO_TOKEN・ASC_API_KEY_P8（テレビ電話リバーシと同じもの）

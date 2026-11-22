@@ -1,3 +1,7 @@
 shots/
 __pycache__/
 node_modules/
+node_modules/
+app/assets/web.zip
+app/assets/web-version.json
+app/asc.p8

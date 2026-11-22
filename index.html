@@ -2582,6 +2582,25 @@ const CFG = Object.assign({ sfx: 2, fx: 2, slow: 0, relay: 0 }, (() => { try { r
 const saveCFG = () => { try { localStorage.setItem(CFG_KEY, JSON.stringify(CFG)); } catch (e) { } };
 let motion = 1;
 
+/* ---------- アプリ版の殻（app/App.js）とのやりとり ----------
+   殻があるときは window.RVNative がある。ページ → 殻：postMessage(JSON)、殻 → ページ：window.RV.native(JSON)
+   Web（GitHub Pages）では なにもしない。 */
+const NATIVE = (() => {
+  const on = !!window.RVNative, waits = {};
+  const post = m => { try { window.ReactNativeWebView.postMessage(JSON.stringify(m)); } catch (e) { } };
+  const wait = (t, ms) => new Promise(res => { waits[t] = res; setTimeout(() => { if (waits[t] === res) { delete waits[t]; res(null); } }, ms); });
+  window.RV = { native(m) { const f = m && waits[m.t]; if (f) { delete waits[m.t]; f(m); } } };
+  return {
+    on,
+    android: on && window.RVNative.platform === "android",
+    // 共有画面（LINE を えらぶ）。送ったかどうかが わかる（iPhone）
+    async share(text) { post({ t: "share", text }); return await wait("shared", 120000); },
+    // Android：カメラ・マイクの許可を 殻で先にもらう（WebView の中だけでは 許可の画面が出ない）
+    async media() { if (!this.android) return; post({ t: "needMedia" }); await wait("media", 60000); },
+    open(url) { post({ t: "open", url }); },
+  };
+})();
+
 /* ---------- 効果音（すべてその場で合成。素材ファイルなし） ----------
    ctx / audio() は ことばのたね の part_sound.js のものを使う。
    音量は master を通す（キャラの演技の小さな音は part_moves.js が直接鳴らす）。 */
@@ -2875,6 +2894,7 @@ const NET = (() => {
     const V = { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 12, max: 15 } };
     const A = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
     N.local = null; N.media = "";
+    await NATIVE.media();
     for (const [c, label] of [[{ video: V, audio: A }, "both"], [{ audio: A }, "audio"], [{ video: V }, "video"]]) {
       try { N.local = await navigator.mediaDevices.getUserMedia(c); N.media = label; break; } catch (e) { /* 次をためす */ }
     }
@@ -3026,7 +3046,9 @@ const NET = (() => {
   }, 4000);
 
   N.host = host; N.guest = guest;
-  N.inviteURL = () => location.origin + location.pathname + "?r=" + N.room + (ps ? "&ps=" + ps : "") + "&openExternalBrowser=1";
+  // アプリの中（http://127.0.0.1…）から送るリンクは 公開中の Web 版を さす
+  const PUBLIC = window.RVNative ? "https://amane1234567jp-crypto.github.io/sanbasi/" : location.origin + location.pathname;
+  N.inviteURL = () => PUBLIC + "?r=" + N.room + (ps ? "&ps=" + ps : "") + "&openExternalBrowser=1";
   return N;
 })();
 
@@ -3134,7 +3156,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 // iPadOS 15.4 より前の Safari 向け
 if (!Array.prototype.at) Array.prototype.at = function (n) { n = Math.trunc(n) || 0; if (n < 0) n += this.length; return this[n]; };
 
-const VERSION = "11/22 10:56 efac003";
+const VERSION = "11/22 11:06 297fe58";
 /* ---------- サンバーシ 画面と進行 ----------
    1台で3人（となりの ひとと）／テレビ電話で遠隔（とおくの ひとと）。
    効果音（sfx.js）と はでな演出（fx.js）は テレビ電話リバーシのものを そのまま使う。 */
@@ -3558,7 +3580,7 @@ const VERSION = "11/22 10:56 efac003";
       </div>`);
     const lb = $("lineBtn"), text = "サンバーシで あそぼう！\n" + url;
     // 共有画面（LINE をえらぶ）。送ると自動でこの画面に戻る。共有画面がない端末は LINE を直接ひらく
-    if (lb) lb.onclick = async () => { if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } } location.href = "https://line.me/R/share?text=" + encodeURIComponent(text); };
+    if (lb) lb.onclick = async () => { if (NATIVE.on) { await NATIVE.share(text); return; } if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } } location.href = "https://line.me/R/share?text=" + encodeURIComponent(text); };
     const cp = $("copy"); if (cp) cp.onclick = () => { navigator.clipboard.writeText(url).then(() => { cp.textContent = "コピーしました"; }).catch(() => { cp.textContent = url; }); };
   }
 
