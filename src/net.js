@@ -145,8 +145,8 @@ const NET = (() => {
 
   // ---- ゲスト ----
   let hello = null;
-  async function guest(seats) {
-    N.role = "guest"; hello = { t: "hello", dev, seats };
+  async function guest(seats, names) {
+    N.role = "guest"; hello = { t: "hello", dev, seats, names: names || [] };
     await camera();
     const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())], iceTransportPolicy: CFG.relay ? "relay" : "all" } });
     N.peer = makePeer(null, opt);
@@ -179,7 +179,7 @@ const NET = (() => {
     conn.on("close", lost); conn.on("error", lost);
     setTimeout(() => { if (!N.open && conn === N.hostConn) { try { conn.close(); } catch (e) { } N.hostConn = null; dial(); } }, 7000);
   }
-  N.hello = seats => { if (hello) { hello.seats = seats; N.send(hello); } };
+  N.hello = (seats, names) => { if (hello) { hello.seats = seats; if (names) hello.names = names; N.send(hello); } };
   N.send = m => { if (N.hostConn && N.open) try { N.hostConn.send(m); } catch (e) { } };
 
   // 生きているかの合図（12秒 便りがなければ 切れたとみなす）

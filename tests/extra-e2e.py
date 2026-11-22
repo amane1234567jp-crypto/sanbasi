@@ -3,20 +3,24 @@ import asyncio
 from playwright.async_api import async_playwright
 BASE = "http://127.0.0.1:8000/index.html?ps=127.0.0.1:9000"
 ARGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"]
+async def names(p, n, base):
+    for k in range(n):
+        await p.fill(f"#nm{k}", f"{base}{k+1}")
+    await p.click("#nmOk")
 async def main():
     async with async_playwright() as pw:
         b = await pw.chromium.launch(args=ARGS); errs = []
         hc = await b.new_context(viewport={"width": 390, "height": 844}, permissions=["camera", "microphone"])
         host = await hc.new_page(); host.on("pageerror", lambda e: errs.append(str(e)))
-        await host.goto(BASE); await host.click("#goFar"); await host.click("#p1")
+        await host.goto(BASE); await host.click("#goFar"); await host.click("#p1"); await names(host, 1, "ホスト")
         await host.wait_for_function("NET.room && NET.peer && NET.peer.open", timeout=20000)
         url = await host.evaluate("NET.inviteURL()")
         gc = await b.new_context(viewport={"width": 390, "height": 844}, permissions=["camera", "microphone"])
         g1 = await gc.new_page(); g1.on("pageerror", lambda e: errs.append(str(e)))
         await g1.goto(url); await host.wait_for_timeout(300); await g1.screenshot(path="/home/claude/sanbasi/shots/welcome.png")
-        await g1.click("#p2"); await g1.wait_for_function("SANBASI.started", timeout=30000)
+        await g1.click("#p2"); await names(g1, 2, "まご"); await g1.wait_for_function("SANBASI.started", timeout=30000)
         # 同じ端末（同じ保存場所）で2つめの画面
-        g2 = await gc.new_page(); await g2.goto(url); await g2.click("#p2")
+        g2 = await gc.new_page(); await g2.goto(url); await g2.click("#p2"); await g2.click("#nmOk")
         await g2.wait_for_function("document.querySelector('#ov').textContent.includes('ほかの がめん')", timeout=30000)
         print("2つめの画面は ことわられる: OK")
         print("1つめは つながったまま:", await g1.evaluate("NET.open"))
@@ -29,12 +33,21 @@ async def main():
         await g1.click("#restart"); await g1.click("#mQuit")
         await host.wait_for_function("document.querySelector('#banner').textContent.includes('おわりにしました')", timeout=15000)
         print("やめる知らせ:", await host.evaluate("document.querySelector('#banner').textContent"))
-        await host.wait_for_function("!location.search && document.querySelector('#goFar')", timeout=20000)
+        await host.wait_for_function("!location.search.includes('r=') && document.querySelector('#goFar')", timeout=20000)
         print("ホストは はじめの画面に もどった: OK")
+        # 2回目：リンクなしで「○○の へやに はいる」
+        await g1.wait_for_function("document.querySelector('.room')", timeout=20000)
+        print("ゲストの はじめの画面:", await g1.evaluate("document.querySelector('.room').textContent"))
+        await host.click("#goFar"); await host.click("#p1"); await host.click("#nmOk")
+        await host.wait_for_function("NET.peer && NET.peer.open", timeout=20000)
+        await g1.click(".room"); await g1.click("#p2"); await g1.click("#nmOk")
+        await host.wait_for_function("SANBASI.started", timeout=30000)
+        print("リンクなしで また つながった: OK  札:", await host.evaluate("[...document.querySelectorAll('.seat .pn')].map(e=>e.textContent).join(',')"))
+        await host.wait_for_timeout(2500); await host.screenshot(path="/home/claude/sanbasi/shots/names.png")
         # カメラなし（許可しない）
         nb = await pw.chromium.launch(args=["--autoplay-policy=no-user-gesture-required"])
         nc = await nb.new_context(viewport={"width": 390, "height": 844})
-        np_ = await nc.new_page(); await np_.goto(BASE); await np_.click("#goFar"); await np_.click("#p1")
+        np_ = await nc.new_page(); await np_.goto(BASE); await np_.click("#goFar"); await np_.click("#p1"); await names(np_, 1, "テスト")
         await np_.wait_for_function("document.querySelector('#note').classList.contains('show')", timeout=20000)
         await np_.screenshot(path="/home/claude/sanbasi/shots/nocam.png")
         print("カメラなしの案内: OK")

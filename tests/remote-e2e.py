@@ -4,6 +4,10 @@ import asyncio, sys
 from playwright.async_api import async_playwright
 BASE = "http://127.0.0.1:8000/index.html?ps=127.0.0.1:9000"
 ARGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"]
+async def names(p, n, base):
+    for k in range(n):
+        await p.fill(f"#nm{k}", f"{base}{k+1}")
+    await p.click("#nmOk")
 async def page(b, errs, tag):
     c = await b.new_context(viewport={"width": 390, "height": 844}, permissions=["camera", "microphone"])
     p = await c.new_page(); p.on("pageerror", lambda e: errs.append(f"{tag}: {e}")); return p
@@ -11,12 +15,12 @@ async def run(counts):
     async with async_playwright() as pw:
         b = await pw.chromium.launch(args=ARGS); errs = []
         host = await page(b, errs, "host"); await host.goto(BASE); await host.click("#goFar")
-        await host.click("#p1" if counts[0] == 1 else "#p2")
+        await host.click("#p1" if counts[0] == 1 else "#p2"); await names(host, counts[0], "ホスト")
         await host.wait_for_function("NET.room && NET.peer && NET.peer.open", timeout=20000)
         url = await host.evaluate("NET.inviteURL()")
         guests = []
         for k, n in enumerate(counts[1:]):
-            g = await page(b, errs, f"guest{k}"); await g.goto(url); await g.click("#p1" if n == 1 else "#p2"); guests.append(g)
+            g = await page(b, errs, f"guest{k}"); await g.goto(url); await g.click("#p1" if n == 1 else "#p2"); await names(g, n, f"ゲスト{k}の"); guests.append(g)
             await g.wait_for_function("NET.open", timeout=30000)
         allp = [host] + guests
         for p in allp: await p.wait_for_function("SANBASI.started", timeout=30000)
@@ -41,7 +45,7 @@ async def run(counts):
         print("履歴がそろっている:", len(set(hs)) == 1, len(hs[0].split(',')), "手")
         await host.screenshot(path=f"shots/remote{len(allp)}-mid-host.png"); await guests[0].screenshot(path=f"shots/remote{len(allp)}-mid-guest.png")
         # 再接続：ゲスト0 を読みなおして 同じ席に戻るか
-        await guests[0].reload(); await guests[0].click("#p1" if counts[1] == 1 else "#p2")
+        await guests[0].reload(); await guests[0].click("#p1" if counts[1] == 1 else "#p2"); await guests[0].click("#nmOk")
         await guests[0].wait_for_function("SANBASI.started && SANBASI.hist.length>0", timeout=40000)
         print("読みなおし後の席:", await guests[0].evaluate("SANBASI.mySeats"), "履歴:", (await guests[0].evaluate("SANBASI.hist.join(',')")) == hs[0])
         print("エラー:", errs)
