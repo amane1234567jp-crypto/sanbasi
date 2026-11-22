@@ -46,8 +46,45 @@ const NET = (() => {
     for (const [c, label] of [[{ video: V, audio: A }, "both"], [{ audio: A }, "audio"], [{ video: V }, "video"]]) {
       try { N.local = await navigator.mediaDevices.getUserMedia(c); N.media = label; break; } catch (e) { /* 次をためす */ }
     }
+    if (N.local) N.local.getTracks().forEach(t => t.addEventListener("ended", () => setTimeout(refreshMedia, 800)));
     emit("local", N.local);
   }
+  // 止まった（ended / muted のままの）カメラ・マイクを取りなおして、通話中の線ぜんぶを 新しい線に差しかえる
+  let refreshing = false;
+  async function refreshMedia(force) {
+    if (refreshing || !N.role) return false;
+    const old = N.local;
+    const dead = !old || !old.getTracks().length || old.getTracks().some(t => t.readyState === "ended" || t.muted);
+    if (!dead && !force) return false;
+    refreshing = true;
+    try {
+      await camera();
+      for (const call of N.calls.values()) {
+        const pc = call.peerConnection; if (!pc || !N.local) continue;
+        for (const snd of pc.getSenders()) {
+          const kind = snd.track && snd.track.kind, t = kind && N.local.getTracks().find(x => x.kind === kind);
+          if (t) try { await snd.replaceTrack(t); } catch (e) { }
+        }
+      }
+      if (old && old !== N.local) old.getTracks().forEach(t => { try { t.stop(); } catch (e) { } });
+    } finally { refreshing = false; }
+    return true;
+  }
+  N.refreshMedia = refreshMedia;
+  // いまのつながり方（設定に出す）：直接／中継サーバー
+  N.linkType = async () => {
+    const out = [];
+    for (const call of N.calls.values()) {
+      try {
+        const st = await call.peerConnection.getStats(); let pair = null, loc = {};
+        st.forEach(r => { if (r.type === "candidate-pair" && r.state === "succeeded" && (r.nominated || r.selected)) pair = r; if (r.type === "local-candidate") loc[r.id] = r; });
+        if (pair && loc[pair.localCandidateId]) out.push(loc[pair.localCandidateId].candidateType === "relay" ? "中継サーバー" : "直接");
+      } catch (e) { }
+    }
+    return out.length ? out.join("・") : "まだ";
+  };
+  N.newRoom = () => { try { localStorage.removeItem(ROOM_KEY); } catch (e) { } };
+  N.stop = () => { N.stopped = true; try { N.hostConn && N.hostConn.close(); } catch (e) { } };
   // 発熱対策（reversi と同じ）：H.264 を先に、映像の帯域に上限
   function tuneSdp(sdp) {
     try {
@@ -84,10 +121,11 @@ const NET = (() => {
   async function host(fresh) {
     N.role = "host";
     let saved = null; try { saved = JSON.parse(localStorage.getItem(ROOM_KEY)); } catch (e) { }
-    N.room = (!fresh && saved && saved.room && Date.now() - saved.at < 3 * 3600e3) ? saved.room : rndId(8);
+    // 部屋は端末に固定（一度送ったリンクが ずっと使える。設定「あたらしい へやに する」で作りなおす）
+    N.room = (!fresh && saved && saved.room) ? saved.room : rndId(8);
     try { localStorage.setItem(ROOM_KEY, JSON.stringify({ room: N.room, at: Date.now() })); } catch (e) { }
     await camera();
-    const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())] } });
+    const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())], iceTransportPolicy: CFG.relay ? "relay" : "all" } });
     const start = () => {
       N.peer = makePeer(idOf(N.room), opt);
       N.peer.on("open", () => emit("ready"));
@@ -110,21 +148,20 @@ const NET = (() => {
   async function guest(seats) {
     N.role = "guest"; hello = { t: "hello", dev, seats };
     await camera();
-    const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())] } });
+    const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())], iceTransportPolicy: CFG.relay ? "relay" : "all" } });
     N.peer = makePeer(null, opt);
     N.peer.on("open", dial);
     N.peer.on("call", answer);
     N.peer.on("error", e => { if (e.type === "peer-unavailable") setTimeout(dial, 3000); else emit("error", e.type); });
   }
   function dial() {
-    if (N.open || !N.peer || N.peer.destroyed) return;
+    if (N.open || N.stopped || !N.peer || N.peer.destroyed) return;
     if (N.peer.disconnected) { try { N.peer.reconnect(); } catch (e) { } setTimeout(dial, 3000); return; }
     const conn = N.peer.connect(idOf(N.room), { serialization: "json", reliable: true });
     N.hostConn = conn;
     conn.on("open", () => {
       N.open = true; N.heard.set("host", Date.now()); emit("open");
-      conn.send(hello);
-      callPeer(idOf(N.room));
+      conn.send(hello);   // 通話は ホストに受け入れられて（名簿が届いて）から かける
     });
     conn.on("data", m => {
       if (conn !== N.hostConn) return;
@@ -132,12 +169,13 @@ const NET = (() => {
       if (!m || m.t === "ping") return;
       // 名簿：自分より前からいるゲストには、こちらから通話をかける
       if (m.t === "state" && m.roster) {
+        if (!N.calls.has(idOf(N.room))) callPeer(idOf(N.room));
         const me = m.roster.findIndex(x => x.peer === N.peer.id);
         m.roster.forEach((x, k) => { if (k < me && x.peer && x.peer !== N.peer.id && x.role === "guest") callPeer(x.peer); });
       }
       emit("msg", m, "host");
     });
-    const lost = () => { if (conn !== N.hostConn) return; if (N.open) { N.open = false; emit("lost"); } setTimeout(dial, 1500); };
+    const lost = () => { if (conn !== N.hostConn || N.stopped) return; if (N.open) { N.open = false; emit("lost"); } setTimeout(dial, 1500); };
     conn.on("close", lost); conn.on("error", lost);
     setTimeout(() => { if (!N.open && conn === N.hostConn) { try { conn.close(); } catch (e) { } N.hostConn = null; dial(); } }, 7000);
   }

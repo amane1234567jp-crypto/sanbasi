@@ -123,6 +123,28 @@ body.call .videos { display: flex; }
 .ov .pick { display: flex; gap: 10px; }
 .ov .pick button { flex: 1; font: inherit; font-size: 22px; font-weight: 800; padding: 18px 0; border: 0; border-radius: 16px; background: #37935F; color: #fff; box-shadow: 0 4px 0 #25714A; }
 .ov .qr svg { width: 180px; height: 180px; margin: 10px auto 0; display: block; }
+.tile .nv { display: none; position: absolute; inset: 0; place-items: center; text-align: center; background: #2B2A33; color: #fff; font-size: 10px; font-weight: 700; line-height: 1.4; }
+.tile.novid .nv { display: grid; }
+.tile.self .nv { font-size: 8px; }
+.note { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(360px, 92vw); background: #FFFDF6; border-radius: 16px; padding: 14px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.2); font-size: 14px; line-height: 1.6; display: none; z-index: 9; }
+.note.show { display: block; }
+.note button { display: block; margin: 8px 0 0 auto; font: inherit; font-weight: 700; border: 0; border-radius: 10px; padding: 6px 14px; background: #E9E0CC; }
+.ov button.small { display: block; margin: 14px auto 0; font: inherit; font-size: 14px; font-weight: 700; color: #6E6A75; background: none; border: 0; text-decoration: underline; }
+.ov .ver { font-size: 11px; color: #A9A3AE; margin-top: 8px; }
+.ov .set { max-height: 92vh; overflow: auto; position: relative; }
+.ov .set .x { position: sticky; top: 0; float: right; font: inherit; font-size: 22px; border: 0; background: #E9E0CC; border-radius: 50%; width: 36px; height: 36px; }
+.ov .lab { text-align: left; font-weight: 800; margin: 14px 0 6px; }
+.ov .opts { display: flex; gap: 6px; flex-wrap: wrap; }
+.ov .opt { flex: 1; font: inherit; font-weight: 700; padding: 9px 6px; border-radius: 12px; border: 2px solid #E9E0CC; background: #FFFDF6; }
+.ov .opt.on { border-color: #37935F; background: #E3F3E9; }
+.ov .card .opt, .ov .card button.small, .ov .card .x { color: var(--ink); box-shadow: none; margin-top: 0; width: auto; }
+.ov .card button.small { color: #6E6A75; background: none; padding: 4px; margin: 14px auto 0; font-size: 14px; }
+.ov .card .x { width: 36px; padding: 0; background: #E9E0CC; font-size: 22px; }
+.ov .card .opt { background: #FFFDF6; padding: 9px 6px; font-size: 15px; }
+.ov .card .opt.on { background: #E3F3E9; }
+.welcome h2 { font-size: 28px; margin: 0 0 10px; }
+.welcome ol { text-align: left; font-size: 20px; font-weight: 700; line-height: 1.7; padding-left: 1.4em; margin: 0 0 16px; }
+.welcome .pick button { font-size: 26px; }
 </style>
 </head>
 <body>
@@ -130,10 +152,11 @@ body.call .videos { display: flex; }
 <div class="videos" id="videos"></div>
 <div class="boardWrap" id="wrap"><div class="board" id="board"></div></div>
 <div class="legend"><span class="mini cw"></span>みんなの いし：だれでも はさむのに つかえる</div>
-<div class="foot"><span id="gameNo"></span><button id="restart">はじめから</button></div>
+<div class="foot"><span id="gameNo"></span><button id="restart">メニュー</button></div>
 <div class="banner" id="banner"></div>
 <canvas id="fx" aria-hidden="true"></canvas>
 <div class="netNote" id="netNote"></div>
+<div class="note" id="note"></div>
 <div class="ov" id="ov"></div>
 <div class="sheet" id="sheet"><div class="card" id="card"></div></div>
 <script>
@@ -2544,9 +2567,14 @@ function audio() {
     if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === "suspended") ctx.resume();
   } catch (e) { }
+  return ctx;
 }
-function OUTN() { return ctx.destination; }
-const CFG = { sfx: 2, fx: 2, slow: 0 };
+// 音の出口：ふだんは スピーカー。Android の通話中は 通話の線（sound.js の routeViaCall が window.__out を作る）
+function OUTN() { return (window.__out && window.__out.context === ctx) ? window.__out : ctx.destination; }
+/* 設定（この端末だけ）。sfx：音の大きさ 0〜3／fx：2=はで 1=ひかえめ／relay：1=中継サーバーだけで つなぐ（テスト用） */
+const CFG_KEY = "sanbasi-cfg";
+const CFG = Object.assign({ sfx: 2, fx: 2, slow: 0, relay: 0 }, (() => { try { return JSON.parse(localStorage.getItem(CFG_KEY)) || {}; } catch (e) { return {}; } })());
+const saveCFG = () => { try { localStorage.setItem(CFG_KEY, JSON.stringify(CFG)); } catch (e) { } };
 let motion = 1;
 
 /* ---------- 効果音（すべてその場で合成。素材ファイルなし） ----------
@@ -2845,8 +2873,45 @@ const NET = (() => {
     for (const [c, label] of [[{ video: V, audio: A }, "both"], [{ audio: A }, "audio"], [{ video: V }, "video"]]) {
       try { N.local = await navigator.mediaDevices.getUserMedia(c); N.media = label; break; } catch (e) { /* 次をためす */ }
     }
+    if (N.local) N.local.getTracks().forEach(t => t.addEventListener("ended", () => setTimeout(refreshMedia, 800)));
     emit("local", N.local);
   }
+  // 止まった（ended / muted のままの）カメラ・マイクを取りなおして、通話中の線ぜんぶを 新しい線に差しかえる
+  let refreshing = false;
+  async function refreshMedia(force) {
+    if (refreshing || !N.role) return false;
+    const old = N.local;
+    const dead = !old || !old.getTracks().length || old.getTracks().some(t => t.readyState === "ended" || t.muted);
+    if (!dead && !force) return false;
+    refreshing = true;
+    try {
+      await camera();
+      for (const call of N.calls.values()) {
+        const pc = call.peerConnection; if (!pc || !N.local) continue;
+        for (const snd of pc.getSenders()) {
+          const kind = snd.track && snd.track.kind, t = kind && N.local.getTracks().find(x => x.kind === kind);
+          if (t) try { await snd.replaceTrack(t); } catch (e) { }
+        }
+      }
+      if (old && old !== N.local) old.getTracks().forEach(t => { try { t.stop(); } catch (e) { } });
+    } finally { refreshing = false; }
+    return true;
+  }
+  N.refreshMedia = refreshMedia;
+  // いまのつながり方（設定に出す）：直接／中継サーバー
+  N.linkType = async () => {
+    const out = [];
+    for (const call of N.calls.values()) {
+      try {
+        const st = await call.peerConnection.getStats(); let pair = null, loc = {};
+        st.forEach(r => { if (r.type === "candidate-pair" && r.state === "succeeded" && (r.nominated || r.selected)) pair = r; if (r.type === "local-candidate") loc[r.id] = r; });
+        if (pair && loc[pair.localCandidateId]) out.push(loc[pair.localCandidateId].candidateType === "relay" ? "中継サーバー" : "直接");
+      } catch (e) { }
+    }
+    return out.length ? out.join("・") : "まだ";
+  };
+  N.newRoom = () => { try { localStorage.removeItem(ROOM_KEY); } catch (e) { } };
+  N.stop = () => { N.stopped = true; try { N.hostConn && N.hostConn.close(); } catch (e) { } };
   // 発熱対策（reversi と同じ）：H.264 を先に、映像の帯域に上限
   function tuneSdp(sdp) {
     try {
@@ -2883,10 +2948,11 @@ const NET = (() => {
   async function host(fresh) {
     N.role = "host";
     let saved = null; try { saved = JSON.parse(localStorage.getItem(ROOM_KEY)); } catch (e) { }
-    N.room = (!fresh && saved && saved.room && Date.now() - saved.at < 3 * 3600e3) ? saved.room : rndId(8);
+    // 部屋は端末に固定（一度送ったリンクが ずっと使える。設定「あたらしい へやに する」で作りなおす）
+    N.room = (!fresh && saved && saved.room) ? saved.room : rndId(8);
     try { localStorage.setItem(ROOM_KEY, JSON.stringify({ room: N.room, at: Date.now() })); } catch (e) { }
     await camera();
-    const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())] } });
+    const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())], iceTransportPolicy: CFG.relay ? "relay" : "all" } });
     const start = () => {
       N.peer = makePeer(idOf(N.room), opt);
       N.peer.on("open", () => emit("ready"));
@@ -2909,21 +2975,20 @@ const NET = (() => {
   async function guest(seats) {
     N.role = "guest"; hello = { t: "hello", dev, seats };
     await camera();
-    const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())] } });
+    const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())], iceTransportPolicy: CFG.relay ? "relay" : "all" } });
     N.peer = makePeer(null, opt);
     N.peer.on("open", dial);
     N.peer.on("call", answer);
     N.peer.on("error", e => { if (e.type === "peer-unavailable") setTimeout(dial, 3000); else emit("error", e.type); });
   }
   function dial() {
-    if (N.open || !N.peer || N.peer.destroyed) return;
+    if (N.open || N.stopped || !N.peer || N.peer.destroyed) return;
     if (N.peer.disconnected) { try { N.peer.reconnect(); } catch (e) { } setTimeout(dial, 3000); return; }
     const conn = N.peer.connect(idOf(N.room), { serialization: "json", reliable: true });
     N.hostConn = conn;
     conn.on("open", () => {
       N.open = true; N.heard.set("host", Date.now()); emit("open");
-      conn.send(hello);
-      callPeer(idOf(N.room));
+      conn.send(hello);   // 通話は ホストに受け入れられて（名簿が届いて）から かける
     });
     conn.on("data", m => {
       if (conn !== N.hostConn) return;
@@ -2931,12 +2996,13 @@ const NET = (() => {
       if (!m || m.t === "ping") return;
       // 名簿：自分より前からいるゲストには、こちらから通話をかける
       if (m.t === "state" && m.roster) {
+        if (!N.calls.has(idOf(N.room))) callPeer(idOf(N.room));
         const me = m.roster.findIndex(x => x.peer === N.peer.id);
         m.roster.forEach((x, k) => { if (k < me && x.peer && x.peer !== N.peer.id && x.role === "guest") callPeer(x.peer); });
       }
       emit("msg", m, "host");
     });
-    const lost = () => { if (conn !== N.hostConn) return; if (N.open) { N.open = false; emit("lost"); } setTimeout(dial, 1500); };
+    const lost = () => { if (conn !== N.hostConn || N.stopped) return; if (N.open) { N.open = false; emit("lost"); } setTimeout(dial, 1500); };
     conn.on("close", lost); conn.on("error", lost);
     setTimeout(() => { if (!N.open && conn === N.hostConn) { try { conn.close(); } catch (e) { } N.hostConn = null; dial(); } }, 7000);
   }
@@ -2959,6 +3025,111 @@ const NET = (() => {
   return N;
 })();
 
+/* ---------- 音の出口（テレビ電話リバーシ 2026-11-07〜08 と同じ対策） ----------
+   1) navigator.audioSession（iOS 17 以降）：1台のときは "playback"、通話のときは "play-and-record"。
+      電話のあとは iOS が戻してしまうことがあるので、画面に戻るたび・さわるたびに 設定しなおす
+   2) 1台のときは 無音の WAV を audio 要素でくりかえし流す（iPhone のマナーモードでも 効果音が出る）
+   3) 音の出口が止まっていたら resume。さわっても戻らなければ その場で作りなおす
+   4) Android の通話中：効果音を通話と同じ線（MediaStream → audio 要素）で鳴らす。通話が始まったら出口を一度作りなおす */
+const SOUND = { session: "なし", out: "ふつう", keep: null, rebuilt: 0, why: "" };
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function setSession(type) {
+  try {
+    if (!navigator.audioSession) { SOUND.session = "なし（古いiOS）"; return; }
+    if (navigator.audioSession.type !== type) navigator.audioSession.type = type;
+    SOUND.session = type;
+  } catch (e) { SOUND.session = "設定できず"; }
+}
+const wantSession = () => NET.role ? "play-and-record" : "playback";
+const SILENT = (() => {
+  const n = 4000, b = new Uint8Array(44 + n), v = new DataView(b.buffer), w = (o, t) => [...t].forEach((ch, i) => b[o + i] = ch.charCodeAt(0));
+  w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, "data"); v.setUint32(40, n, true); b.fill(128, 44);
+  let bin = ""; b.forEach(x => bin += String.fromCharCode(x)); return "data:audio/wav;base64," + btoa(bin);
+})();
+function keepAlive() {
+  if (NET.role) { if (SOUND.keep) SOUND.keep.pause(); return; }
+  if (!SOUND.keep) {
+    const el = document.createElement("audio");
+    el.setAttribute("playsinline", ""); el.setAttribute("x-webkit-airplay", "deny"); el.preload = "auto"; el.loop = true; el.src = SILENT;
+    el.style.display = "none"; document.body.appendChild(el); SOUND.keep = el;
+  }
+  if (SOUND.keep.paused && !document.hidden) SOUND.keep.play().then(() => SOUND.out = "マナーモード対策あり", () => SOUND.out = "マナーモード対策できず");
+}
+const audioBase = audio;
+audio = function () {
+  const first = !ctx;
+  if (first) setSession(wantSession());
+  audioBase();
+  if (first) { keepAlive(); if (SOUND.viaCall) routeViaCall(); }
+  return ctx;
+};
+function routeViaCall() {
+  try {
+    const dest = ctx.createMediaStreamDestination();
+    window.__out = dest;
+    let el = SOUND.callEl;
+    if (!el) { el = document.createElement("audio"); el.setAttribute("playsinline", ""); el.autoplay = true; el.style.display = "none"; document.body.appendChild(el); SOUND.callEl = el; }
+    el.srcObject = dest.stream; el.muted = false; el.volume = 1;
+    el.play().then(() => { SOUND.out = "通話の線"; }, () => { SOUND.out = "通話の線（再生できず）"; });
+  } catch (e) { SOUND.out = "通話の線にできず"; window.__out = null; }
+}
+function rebuildAudio(why) {
+  const old = ctx; ctx = null; try { old && old.close(); } catch (e) { }
+  SOUND.rebuilt++; SOUND.why = why || ""; SOUND.tried = 0;
+  audio();
+}
+function soundForCall() { setSession("play-and-record"); if (SOUND.keep) SOUND.keep.pause(); }
+function freshForCall(why) {
+  if (IOS || !ctx || SOUND.fresh) return;
+  SOUND.fresh = why; SOUND.viaCall = true;
+  if (!navigator.userActivation || navigator.userActivation.hasBeenActive) rebuildAudio("通話");
+  else SOUND.needFresh = true;
+}
+function wakeSound(e) {
+  if (!ctx) return;
+  if (SOUND.callEl && SOUND.callEl.paused && !document.hidden) SOUND.callEl.play().catch(() => { });
+  if (SOUND.needFresh && e) { SOUND.needFresh = false; return rebuildAudio("通話"); }
+  setSession(wantSession());
+  keepAlive();
+  if (ctx.state === "running") { SOUND.tried = 0; return; }
+  if (ctx.state === "closed" || (e && SOUND.tried)) return rebuildAudio(ctx.state);
+  SOUND.tried = Date.now();
+  try { const p = ctx.resume(); if (p && p.then) p.then(() => { if (ctx && ctx.state === "running") SOUND.tried = 0; }, () => { }); } catch (err) { }
+}
+document.addEventListener("pointerdown", wakeSound, true);
+document.addEventListener("touchend", wakeSound, true);
+function soundInfo() {
+  const st = ctx ? ctx.state : "まだ";
+  return `音：${st}・${SOUND.session}・${SOUND.out}${SOUND.viaCall && !SOUND.out.includes("通話") ? "・通話の線" : ""}${SOUND.rebuilt ? `・作りなおし${SOUND.rebuilt}回` : ""}`;
+}
+// 戻るボタンなどで古い画面がそのまま復元されたときは読みなおす（音の出口が死んでいる）
+addEventListener("pageshow", e => { if (e.persisted) location.reload(); });
+
+/* ---------- 画面を消さない（Wake Lock。ない端末は 音なしの小さな動画をくりかえし流す） ---------- */
+let wake = null, sleepVid = null;
+function keepAwakeVideo() {
+  if (!sleepVid) {
+    sleepVid = document.createElement("video");
+    Object.assign(sleepVid, { src: "lib/nosleep.mp4", muted: true, loop: true, playsInline: true });
+    sleepVid.setAttribute("playsinline", ""); sleepVid.setAttribute("muted", "");
+    sleepVid.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0";
+    document.body.appendChild(sleepVid);
+    setInterval(() => { if (sleepVid && !sleepVid.paused && sleepVid.currentTime > 1) sleepVid.currentTime = 0; }, 15000);
+  }
+  sleepVid.play().catch(() => { });
+}
+let wantAwake = false;
+async function keepAwake() {
+  wantAwake = true;
+  try { wake = await navigator.wakeLock.request("screen"); } catch (e) { wake = null; }
+  if (!wake) keepAwakeVideo();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && wantAwake) keepAwake(); });
+// iPadOS 15.4 より前の Safari 向け
+if (!Array.prototype.at) Array.prototype.at = function (n) { n = Math.trunc(n) || 0; if (n < 0) n += this.length; return this[n]; };
+
+const VERSION = "11/22 10:53 e8f6566";
 /* ---------- サンバーシ 画面と進行 ----------
    1台で3人（となりの ひとと）／テレビ電話で遠隔（とおくの ひとと）。
    効果音（sfx.js）と はでな演出（fx.js）は テレビ電話リバーシのものを そのまま使う。 */
@@ -3059,7 +3230,6 @@ const NET = (() => {
 
   // ---- 札 ----
   function seats() {
-    $("restart").style.visibility = mode === "solo" ? "" : "hidden";
     const c = S ? SB.counts(S) : [0, 0, 0];
     $("seats").innerHTML = [0, 1, 2].map(i => `<div class="seat ${S && S.turn === i && !busy && started && !S.over ? "on" : ""}" id="seat${i}">
       <div class="turn">${mode !== "solo" && mySeats.has(i) ? "あなたの ばん" : "の ばん"}</div>
@@ -3186,6 +3356,8 @@ const NET = (() => {
   function hostMsg(m, peer) {
     if (m.t === "hello") {
       let me = roster.find(x => x.dev === m.dev);
+      // 同じリンクを2つの画面で開いたとき：いまの画面が元気なら（8秒以内に便りがある）あとの画面は ことわる
+      if (me && me.peer !== peer && me.online && Date.now() - (NET.heard.get(me.peer) || 0) < 8000 && NET.conns.has(me.peer)) { NET.sendTo(peer, { t: "busy" }); return; }
       if (me) me.peer = peer, me.online = true;
       else {
         const free = freeSeats(), want = Math.min(2, Math.max(1, m.seats | 0));
@@ -3201,11 +3373,14 @@ const NET = (() => {
       commit(m.i);
     }
     if (m.t === "next" && m.g === game) nextGame();
+    if (m.t === "quit") { const who = roster.find(x => x.peer === peer); NET.broadcast({ t: "quit", seats: who ? who.seats : [] }); quitByOther(who ? who.seats : []); }
   }
   NET.on("left", peer => { const x = roster.find(r => r.peer === peer); if (x) x.online = false; publish(); videoLabels(); });
 
   // ---- 遠隔：ゲスト ----
   function guestMsg(m) {
+    if (m.t === "busy") { NET.stop(); overlay(`<div class="card"><h2>ほかの がめんで<br>つながっています</h2><div class="sub">この がめんは とじてください</div></div>`); return; }
+    if (m.t === "quit") { quitByOther(m.seats || []); return; }
     if (m.t === "full") {
       pickCount(n => { overlay(`<div class="card"><h2>つないでいます…</h2></div>`); NET.hello(n); }, m.free ? `あと ${m.free}にん しか はいれません` : "もう いっぱいです");
       if (!m.free) $("joinPick").style.display = "none"; else if (m.free < 2) $("p2").style.display = "none";
@@ -3238,8 +3413,9 @@ const NET = (() => {
     if (S.over) finish();
   }
   NET.on("msg", (m, peer) => mode === "host" ? hostMsg(m, peer) : guestMsg(m));
-  NET.on("lost", () => { $("netNote").textContent = "つなぎなおしています…"; $("netNote").classList.add("show"); });
-  NET.on("open", () => { $("netNote").classList.remove("show"); });
+  let wasLost = false;
+  NET.on("lost", () => { wasLost = true; $("netNote").textContent = "つなぎなおしています… ちょっと まってね"; $("netNote").classList.add("show"); });
+  NET.on("open", () => { $("netNote").classList.remove("show"); if (wasLost && started) { wasLost = false; banner("つながったよ！ つづきから やろう", 1600); } });
 
   // ---- 映像 ----
   const tiles = new Map();
@@ -3247,13 +3423,34 @@ const NET = (() => {
     let t = tiles.get(id);
     if (!t) {
       t = document.createElement("div"); t.className = "tile" + (id === "self" ? " self" : "");
-      t.innerHTML = `<video autoplay playsinline ${id === "self" ? "muted" : ""}></video><div class="who"></div>`;
+      t.innerHTML = `<video autoplay playsinline ${id === "self" ? "muted" : ""}></video><div class="who"></div><div class="nv">カメラが うつりません<br>（ゲームは できます）</div>`;
       $("videos").appendChild(t); tiles.set(id, t);
     }
     return t;
   }
-  NET.on("local", st => { if (!st) return; const t = tile("self"), v = t.querySelector("video"); v.srcObject = st; v.play().catch(() => { }); videoLabels(); });
-  NET.on("stream", (peer, st) => { const t = tile(peer), v = t.querySelector("video"); v.srcObject = st; v.play().catch(() => { }); videoLabels(); });
+  NET.on("local", st => {
+    soundForCall();
+    if (!st) { noCamera(); return; }
+    const t = tile("self"), v = t.querySelector("video"); v.srcObject = st; v.play().catch(() => { }); videoLabels();
+    freshForCall("じぶんの カメラ");
+    if (!st.getVideoTracks().length) t.classList.add("novid");
+  });
+  NET.on("stream", (peer, st) => {
+    const t = tile(peer), v = t.querySelector("video"); v.srcObject = st; v.play().catch(() => { }); videoLabels();
+    freshForCall("あいての 映像");
+    // 相手のカメラが映らないとき（マイクだけ／カメラを許可していない）
+    t.classList.toggle("novid", !st.getVideoTracks().length);
+    setTimeout(() => { if (!v.videoWidth) t.classList.add("novid"); else t.classList.remove("novid"); }, 6000);
+  });
+  // カメラもマイクも使えなかったとき：ゲームは できる。直し方を出す
+  function noCamera() {
+    note(`<b>カメラと マイクが つかえません</b><br>ゲームは このまま できます。<br>テレビでんわを つかうには、Safari なら 画面の「ぁあ」→「Webサイトの設定」で カメラと マイクを「許可」にして、ページを 読みなおしてください。`);
+  }
+  // 電話のあと：止まったカメラ・マイクを取りなおし、相手の映像・声も再生しなおす
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden || !NET.role) return;
+    setTimeout(() => { NET.refreshMedia(); for (const t of tiles.values()) { const v = t.querySelector("video"); if (v.srcObject && v.paused) v.play().catch(() => { }); } }, 1200);
+  });
   NET.on("gone", peer => { const t = tiles.get(peer); if (t) { t.remove(); tiles.delete(peer); } });
   function videoLabels() {
     const hostPeer = NET.room ? "sanbasi-rm-" + NET.room : "";
@@ -3277,9 +3474,21 @@ const NET = (() => {
     overlay(`<div class="card"><div class="logo">サン<span>バーシ</span></div>
       <button class="big1" id="goFar">とおくの ひとと あそぶ</button>
       <button class="big2" id="goNear">1だいで あそぶ</button>
-      <div class="sub">とおくの ひとと：テレビでんわで かおを みながら あそべます</div></div>`);
-    $("goNear").onclick = () => { audio(); mode = "solo"; mySeats = new Set([0, 1, 2]); started = true; hideOverlay(); newGame(); };
-    $("goFar").onclick = () => { audio(); pickCount(n => startHost(n)); };
+      <div class="sub">とおくの ひとと：テレビでんわで かおを みながら あそべます</div>
+      <button class="small" id="goSet">おとなの せってい</button><div class="ver">版 ${VERSION}</div></div>`);
+    $("goSet").onclick = () => settings(startScreen);
+    $("goNear").onclick = () => { audio(); keepAwake(); mode = "solo"; mySeats = new Set([0, 1, 2]); started = true; hideOverlay(); newGame(); };
+    $("goFar").onclick = () => { audio(); keepAwake(); pickCount(n => startHost(n)); };
+  }
+  // さそわれた側：大きな字で 手順を2つだけ
+  function welcome() {
+    overlay(`<div class="card welcome"><div class="logo">サン<span>バーシ</span></div><h2>お誘いです</h2>
+      <ol><li>この端末で遊ぶ人数を選ぶ</li><li>カメラとマイクを「許可」する</li></ol>
+      <div class="pick" id="joinPick"><button id="p1">1人</button><button id="p2">2人</button></div>
+      <div class="sub">2人で1台を使うときは「2人」</div></div>`);
+    const go = n => { audio(); keepAwake(); overlay(`<div class="card"><h2>つないでいます…</h2><div class="sub" id="waitHint"></div></div>`); NET.guest(n);
+      setTimeout(() => { const h = $("waitHint"); if (h && !started) h.innerHTML = "なかなか つながらないときは、さそった人の 端末で「あいてを よぶ」の画面が ひらいているか たしかめてね"; }, 30000); };
+    $("p1").onclick = () => go(1); $("p2").onclick = () => go(2);
   }
   function pickCount(go, title = "このスマホで あそぶのは？") {
     overlay(`<div class="card"><h2>${title}</h2><div id="joinMsg" class="sub"></div>
@@ -3305,11 +3514,57 @@ const NET = (() => {
     overlay(`<div class="card"><h2>${mode === "host" ? "あいてを よぶ" : "つながりました"}</h2>
       ${[0, 1, 2].map(seatLine).join("")}
       ${mode === "host" ? (url ? `<div class="qr">${qr}</div>
-        <a class="btn line" href="https://line.me/R/share?text=${encodeURIComponent("サンバーシで あそぼう！\n" + url)}" target="_blank" rel="noopener">LINEで おくる</a>
+        <button class="btn line" id="lineBtn">LINEで おくる</button>
         <button class="btn" id="copy">リンクを コピー</button>` : `<div class="sub">へやを つくっています…</div>`) : `<div class="sub">みんなが そろうと はじまります</div>`}
       </div>`);
+    const lb = $("lineBtn"), text = "サンバーシで あそぼう！\n" + url;
+    // 共有画面（LINE をえらぶ）。送ると自動でこの画面に戻る。共有画面がない端末は LINE を直接ひらく
+    if (lb) lb.onclick = async () => { if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } } location.href = "https://line.me/R/share?text=" + encodeURIComponent(text); };
     const cp = $("copy"); if (cp) cp.onclick = () => { navigator.clipboard.writeText(url).then(() => { cp.textContent = "コピーしました"; }).catch(() => { cp.textContent = url; }); };
   }
+
+  // ---- メニュー：やめる／はじめから／せってい ----
+  function toMenu() {
+    try { NET.local && NET.local.getTracks().forEach(tr => tr.stop()); NET.peer && NET.peer.destroy(); } catch (e) { }
+    location.replace(location.pathname);   // 読みなおすのが いちばん確実に まっさらに もどる
+  }
+  async function quitByOther(seatsOf) {
+    busy = true; showHints(); $("sheet").classList.remove("show");
+    await banner(`${seatsOf.map(chip).join("")} ${seatsOf.map(k => NAMES[k]).join("・") || "あいて"} が おわりにしました`, 2600);
+    toMenu();
+  }
+  function menu() {
+    const remote = mode !== "solo";
+    overlay(`<div class="card"><h2>メニュー</h2>
+      <button class="big2" id="mBack">つづける</button>
+      ${remote ? "" : '<button class="big2" id="mRe">はじめから やりなおす</button>'}
+      <button class="big2" id="mQuit">やめて はじめの がめんに もどる</button>
+      ${remote ? '<div class="sub">あいてとの テレビでんわも おわります</div>' : ""}
+      <button class="small" id="mSet">おとなの せってい</button></div>`);
+    $("mBack").onclick = hideOverlay;
+    if ($("mRe")) $("mRe").onclick = () => { hideOverlay(); game = 0; wins = [0, 0, 0]; totals = [0, 0, 0]; newGame(); };
+    $("mQuit").onclick = () => { if (mode === "host") NET.broadcast({ t: "quit", seats: [...mySeats] }); else if (mode === "guest") NET.send({ t: "quit" }); setTimeout(toMenu, 300); };
+    $("mSet").onclick = () => settings(menu);
+  }
+  function settings(back) {
+    const opt = (k, v, label) => `<button class="opt ${CFG[k] === v ? "on" : ""}" data-k="${k}" data-v="${v}">${label}</button>`;
+    overlay(`<div class="card set"><button class="x" id="sX">×</button><h2>おとなの せってい</h2>
+      <div class="lab">おとの おおきさ</div><div class="opts">${opt("sfx", 0, "なし")}${opt("sfx", 1, "小")}${opt("sfx", 2, "中")}${opt("sfx", 3, "大")}</div>
+      <div class="lab">えんしゅつ</div><div class="opts">${opt("fx", 2, "はで")}${opt("fx", 1, "ひかえめ")}</div>
+      <div class="lab">つながりかた（テスト用）</div><div class="opts">${opt("relay", 0, "ふつう")}${opt("relay", 1, "中継サーバーだけ")}</div>
+      <div class="sub" id="linkInfo">${NET.role ? "いまの つながり：しらべています…" : "「中継サーバーだけ」で つながれば、家の外どうしでも つながります"}</div>
+      <button class="small" id="sSnd">おとの テスト（なおす）</button><div class="sub" id="sndInfo">${soundInfo()}</div>
+      <button class="small" id="sRoom">あたらしい へやに する</button><div class="sub">まえに おくった リンクは つかえなくなります</div>
+      <div class="ver">版 ${VERSION}</div>
+      <button class="big2" id="sClose">とじる</button></div>`);
+    document.querySelectorAll(".opt").forEach(b => b.onclick = () => { CFG[b.dataset.k] = +b.dataset.v; saveCFG(); settings(back); });
+    $("sX").onclick = $("sClose").onclick = () => back ? back() : hideOverlay();
+    $("sSnd").onclick = () => { if (ctx) rebuildAudio("テスト"); else audio(); setTimeout(() => { SFX.place(); setTimeout(() => SFX.flip(1, 1), 220); }, 60); setTimeout(() => { $("sndInfo").textContent = soundInfo(); }, 600); };
+    $("sRoom").onclick = () => { NET.newRoom(); $("sRoom").textContent = "つぎに よぶときから あたらしい へやです"; };
+    if (NET.role) NET.linkType().then(x => { const e = $("linkInfo"); if (e) e.textContent = "いまの つながり：" + x; });
+  }
+  let noteT = 0;
+  function note(html) { const n = $("note"); n.innerHTML = html + '<button id="noteX">とじる</button>'; n.classList.add("show"); $("noteX").onclick = () => n.classList.remove("show"); }
 
   // ---- タップ：いちばん近いマス ----
   board.addEventListener("click", e => {
@@ -3318,20 +3573,15 @@ const NET = (() => {
     SB.CELLS.forEach((c, i) => { const p = pos(i), d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < bd) { bd = d; best = i; } });
     if (bd < (s * .95) ** 2) play(best);
   });
-  let armed = 0;
-  $("restart").onclick = () => {
-    if (mode !== "solo") return;
-    if (Date.now() - armed < 2500) { game = 0; wins = [0, 0, 0]; totals = [0, 0, 0]; newGame(); return; }
-    armed = Date.now(); $("restart").textContent = "もういちど おすと はじめから"; setTimeout(() => $("restart").textContent = "はじめから", 2500);
-  };
+  $("restart").onclick = () => { audio(); menu(); };
   addEventListener("resize", () => layout());
   // 演出のコマ送り
   let lastT = performance.now();
-  (function loop(t) { FX.step(Math.min(.05, (t - lastT) / 1000)); lastT = t; requestAnimationFrame(loop); })(lastT);
+  (function loop(t) { if (t - lastT >= 30) { FX.step(Math.min(.05, (t - lastT) / 1000)); lastT = t; } requestAnimationFrame(loop); })(lastT);
 
   window.SANBASI = { get state() { return S; }, get busy() { return busy; }, get mode() { return mode; }, get mySeats() { return [...mySeats]; }, get started() { return started; }, get game() { return game; }, get hist() { return hist.slice(); }, play, nextGame };
   S = SB.replay([], 0); layout(); seats();
-  if (mode === "guest") pickCount(n => { overlay(`<div class="card"><h2>つないでいます…</h2></div>`); NET.guest(n); }, "サンバーシに さそわれました<br>このスマホで あそぶのは？");
+  if (mode === "guest") welcome();
   else startScreen();
 })();
 

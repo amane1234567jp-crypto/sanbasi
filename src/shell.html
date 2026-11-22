@@ -123,6 +123,28 @@ body.call .videos { display: flex; }
 .ov .pick { display: flex; gap: 10px; }
 .ov .pick button { flex: 1; font: inherit; font-size: 22px; font-weight: 800; padding: 18px 0; border: 0; border-radius: 16px; background: #37935F; color: #fff; box-shadow: 0 4px 0 #25714A; }
 .ov .qr svg { width: 180px; height: 180px; margin: 10px auto 0; display: block; }
+.tile .nv { display: none; position: absolute; inset: 0; place-items: center; text-align: center; background: #2B2A33; color: #fff; font-size: 10px; font-weight: 700; line-height: 1.4; }
+.tile.novid .nv { display: grid; }
+.tile.self .nv { font-size: 8px; }
+.note { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(360px, 92vw); background: #FFFDF6; border-radius: 16px; padding: 14px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.2); font-size: 14px; line-height: 1.6; display: none; z-index: 9; }
+.note.show { display: block; }
+.note button { display: block; margin: 8px 0 0 auto; font: inherit; font-weight: 700; border: 0; border-radius: 10px; padding: 6px 14px; background: #E9E0CC; }
+.ov button.small { display: block; margin: 14px auto 0; font: inherit; font-size: 14px; font-weight: 700; color: #6E6A75; background: none; border: 0; text-decoration: underline; }
+.ov .ver { font-size: 11px; color: #A9A3AE; margin-top: 8px; }
+.ov .set { max-height: 92vh; overflow: auto; position: relative; }
+.ov .set .x { position: sticky; top: 0; float: right; font: inherit; font-size: 22px; border: 0; background: #E9E0CC; border-radius: 50%; width: 36px; height: 36px; }
+.ov .lab { text-align: left; font-weight: 800; margin: 14px 0 6px; }
+.ov .opts { display: flex; gap: 6px; flex-wrap: wrap; }
+.ov .opt { flex: 1; font: inherit; font-weight: 700; padding: 9px 6px; border-radius: 12px; border: 2px solid #E9E0CC; background: #FFFDF6; }
+.ov .opt.on { border-color: #37935F; background: #E3F3E9; }
+.ov .card .opt, .ov .card button.small, .ov .card .x { color: var(--ink); box-shadow: none; margin-top: 0; width: auto; }
+.ov .card button.small { color: #6E6A75; background: none; padding: 4px; margin: 14px auto 0; font-size: 14px; }
+.ov .card .x { width: 36px; padding: 0; background: #E9E0CC; font-size: 22px; }
+.ov .card .opt { background: #FFFDF6; padding: 9px 6px; font-size: 15px; }
+.ov .card .opt.on { background: #E3F3E9; }
+.welcome h2 { font-size: 28px; margin: 0 0 10px; }
+.welcome ol { text-align: left; font-size: 20px; font-weight: 700; line-height: 1.7; padding-left: 1.4em; margin: 0 0 16px; }
+.welcome .pick button { font-size: 26px; }
 </style>
 </head>
 <body>
@@ -130,10 +152,11 @@ body.call .videos { display: flex; }
 <div class="videos" id="videos"></div>
 <div class="boardWrap" id="wrap"><div class="board" id="board"></div></div>
 <div class="legend"><span class="mini cw"></span>みんなの いし：だれでも はさむのに つかえる</div>
-<div class="foot"><span id="gameNo"></span><button id="restart">はじめから</button></div>
+<div class="foot"><span id="gameNo"></span><button id="restart">メニュー</button></div>
 <div class="banner" id="banner"></div>
 <canvas id="fx" aria-hidden="true"></canvas>
 <div class="netNote" id="netNote"></div>
+<div class="note" id="note"></div>
 <div class="ov" id="ov"></div>
 <div class="sheet" id="sheet"><div class="card" id="card"></div></div>
 <script>
@@ -149,6 +172,8 @@ __SHIM__
 __SFX__
 __FX__
 __NET__
+__SOUND__
+const VERSION = "__VERSION__";
 __APP__
 </script>
 </body>

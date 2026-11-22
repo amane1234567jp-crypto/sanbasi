@@ -98,7 +98,6 @@
 
   // ---- 札 ----
   function seats() {
-    $("restart").style.visibility = mode === "solo" ? "" : "hidden";
     const c = S ? SB.counts(S) : [0, 0, 0];
     $("seats").innerHTML = [0, 1, 2].map(i => `<div class="seat ${S && S.turn === i && !busy && started && !S.over ? "on" : ""}" id="seat${i}">
       <div class="turn">${mode !== "solo" && mySeats.has(i) ? "あなたの ばん" : "の ばん"}</div>
@@ -225,6 +224,8 @@
   function hostMsg(m, peer) {
     if (m.t === "hello") {
       let me = roster.find(x => x.dev === m.dev);
+      // 同じリンクを2つの画面で開いたとき：いまの画面が元気なら（8秒以内に便りがある）あとの画面は ことわる
+      if (me && me.peer !== peer && me.online && Date.now() - (NET.heard.get(me.peer) || 0) < 8000 && NET.conns.has(me.peer)) { NET.sendTo(peer, { t: "busy" }); return; }
       if (me) me.peer = peer, me.online = true;
       else {
         const free = freeSeats(), want = Math.min(2, Math.max(1, m.seats | 0));
@@ -240,11 +241,14 @@
       commit(m.i);
     }
     if (m.t === "next" && m.g === game) nextGame();
+    if (m.t === "quit") { const who = roster.find(x => x.peer === peer); NET.broadcast({ t: "quit", seats: who ? who.seats : [] }); quitByOther(who ? who.seats : []); }
   }
   NET.on("left", peer => { const x = roster.find(r => r.peer === peer); if (x) x.online = false; publish(); videoLabels(); });
 
   // ---- 遠隔：ゲスト ----
   function guestMsg(m) {
+    if (m.t === "busy") { NET.stop(); overlay(`<div class="card"><h2>ほかの がめんで<br>つながっています</h2><div class="sub">この がめんは とじてください</div></div>`); return; }
+    if (m.t === "quit") { quitByOther(m.seats || []); return; }
     if (m.t === "full") {
       pickCount(n => { overlay(`<div class="card"><h2>つないでいます…</h2></div>`); NET.hello(n); }, m.free ? `あと ${m.free}にん しか はいれません` : "もう いっぱいです");
       if (!m.free) $("joinPick").style.display = "none"; else if (m.free < 2) $("p2").style.display = "none";
@@ -277,8 +281,9 @@
     if (S.over) finish();
   }
   NET.on("msg", (m, peer) => mode === "host" ? hostMsg(m, peer) : guestMsg(m));
-  NET.on("lost", () => { $("netNote").textContent = "つなぎなおしています…"; $("netNote").classList.add("show"); });
-  NET.on("open", () => { $("netNote").classList.remove("show"); });
+  let wasLost = false;
+  NET.on("lost", () => { wasLost = true; $("netNote").textContent = "つなぎなおしています… ちょっと まってね"; $("netNote").classList.add("show"); });
+  NET.on("open", () => { $("netNote").classList.remove("show"); if (wasLost && started) { wasLost = false; banner("つながったよ！ つづきから やろう", 1600); } });
 
   // ---- 映像 ----
   const tiles = new Map();
@@ -286,13 +291,34 @@
     let t = tiles.get(id);
     if (!t) {
       t = document.createElement("div"); t.className = "tile" + (id === "self" ? " self" : "");
-      t.innerHTML = `<video autoplay playsinline ${id === "self" ? "muted" : ""}></video><div class="who"></div>`;
+      t.innerHTML = `<video autoplay playsinline ${id === "self" ? "muted" : ""}></video><div class="who"></div><div class="nv">カメラが うつりません<br>（ゲームは できます）</div>`;
       $("videos").appendChild(t); tiles.set(id, t);
     }
     return t;
   }
-  NET.on("local", st => { if (!st) return; const t = tile("self"), v = t.querySelector("video"); v.srcObject = st; v.play().catch(() => { }); videoLabels(); });
-  NET.on("stream", (peer, st) => { const t = tile(peer), v = t.querySelector("video"); v.srcObject = st; v.play().catch(() => { }); videoLabels(); });
+  NET.on("local", st => {
+    soundForCall();
+    if (!st) { noCamera(); return; }
+    const t = tile("self"), v = t.querySelector("video"); v.srcObject = st; v.play().catch(() => { }); videoLabels();
+    freshForCall("じぶんの カメラ");
+    if (!st.getVideoTracks().length) t.classList.add("novid");
+  });
+  NET.on("stream", (peer, st) => {
+    const t = tile(peer), v = t.querySelector("video"); v.srcObject = st; v.play().catch(() => { }); videoLabels();
+    freshForCall("あいての 映像");
+    // 相手のカメラが映らないとき（マイクだけ／カメラを許可していない）
+    t.classList.toggle("novid", !st.getVideoTracks().length);
+    setTimeout(() => { if (!v.videoWidth) t.classList.add("novid"); else t.classList.remove("novid"); }, 6000);
+  });
+  // カメラもマイクも使えなかったとき：ゲームは できる。直し方を出す
+  function noCamera() {
+    note(`<b>カメラと マイクが つかえません</b><br>ゲームは このまま できます。<br>テレビでんわを つかうには、Safari なら 画面の「ぁあ」→「Webサイトの設定」で カメラと マイクを「許可」にして、ページを 読みなおしてください。`);
+  }
+  // 電話のあと：止まったカメラ・マイクを取りなおし、相手の映像・声も再生しなおす
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden || !NET.role) return;
+    setTimeout(() => { NET.refreshMedia(); for (const t of tiles.values()) { const v = t.querySelector("video"); if (v.srcObject && v.paused) v.play().catch(() => { }); } }, 1200);
+  });
   NET.on("gone", peer => { const t = tiles.get(peer); if (t) { t.remove(); tiles.delete(peer); } });
   function videoLabels() {
     const hostPeer = NET.room ? "sanbasi-rm-" + NET.room : "";
@@ -316,9 +342,21 @@
     overlay(`<div class="card"><div class="logo">サン<span>バーシ</span></div>
       <button class="big1" id="goFar">とおくの ひとと あそぶ</button>
       <button class="big2" id="goNear">1だいで あそぶ</button>
-      <div class="sub">とおくの ひとと：テレビでんわで かおを みながら あそべます</div></div>`);
-    $("goNear").onclick = () => { audio(); mode = "solo"; mySeats = new Set([0, 1, 2]); started = true; hideOverlay(); newGame(); };
-    $("goFar").onclick = () => { audio(); pickCount(n => startHost(n)); };
+      <div class="sub">とおくの ひとと：テレビでんわで かおを みながら あそべます</div>
+      <button class="small" id="goSet">おとなの せってい</button><div class="ver">版 ${VERSION}</div></div>`);
+    $("goSet").onclick = () => settings(startScreen);
+    $("goNear").onclick = () => { audio(); keepAwake(); mode = "solo"; mySeats = new Set([0, 1, 2]); started = true; hideOverlay(); newGame(); };
+    $("goFar").onclick = () => { audio(); keepAwake(); pickCount(n => startHost(n)); };
+  }
+  // さそわれた側：大きな字で 手順を2つだけ
+  function welcome() {
+    overlay(`<div class="card welcome"><div class="logo">サン<span>バーシ</span></div><h2>お誘いです</h2>
+      <ol><li>この端末で遊ぶ人数を選ぶ</li><li>カメラとマイクを「許可」する</li></ol>
+      <div class="pick" id="joinPick"><button id="p1">1人</button><button id="p2">2人</button></div>
+      <div class="sub">2人で1台を使うときは「2人」</div></div>`);
+    const go = n => { audio(); keepAwake(); overlay(`<div class="card"><h2>つないでいます…</h2><div class="sub" id="waitHint"></div></div>`); NET.guest(n);
+      setTimeout(() => { const h = $("waitHint"); if (h && !started) h.innerHTML = "なかなか つながらないときは、さそった人の 端末で「あいてを よぶ」の画面が ひらいているか たしかめてね"; }, 30000); };
+    $("p1").onclick = () => go(1); $("p2").onclick = () => go(2);
   }
   function pickCount(go, title = "このスマホで あそぶのは？") {
     overlay(`<div class="card"><h2>${title}</h2><div id="joinMsg" class="sub"></div>
@@ -344,11 +382,57 @@
     overlay(`<div class="card"><h2>${mode === "host" ? "あいてを よぶ" : "つながりました"}</h2>
       ${[0, 1, 2].map(seatLine).join("")}
       ${mode === "host" ? (url ? `<div class="qr">${qr}</div>
-        <a class="btn line" href="https://line.me/R/share?text=${encodeURIComponent("サンバーシで あそぼう！\n" + url)}" target="_blank" rel="noopener">LINEで おくる</a>
+        <button class="btn line" id="lineBtn">LINEで おくる</button>
         <button class="btn" id="copy">リンクを コピー</button>` : `<div class="sub">へやを つくっています…</div>`) : `<div class="sub">みんなが そろうと はじまります</div>`}
       </div>`);
+    const lb = $("lineBtn"), text = "サンバーシで あそぼう！\n" + url;
+    // 共有画面（LINE をえらぶ）。送ると自動でこの画面に戻る。共有画面がない端末は LINE を直接ひらく
+    if (lb) lb.onclick = async () => { if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } } location.href = "https://line.me/R/share?text=" + encodeURIComponent(text); };
     const cp = $("copy"); if (cp) cp.onclick = () => { navigator.clipboard.writeText(url).then(() => { cp.textContent = "コピーしました"; }).catch(() => { cp.textContent = url; }); };
   }
+
+  // ---- メニュー：やめる／はじめから／せってい ----
+  function toMenu() {
+    try { NET.local && NET.local.getTracks().forEach(tr => tr.stop()); NET.peer && NET.peer.destroy(); } catch (e) { }
+    location.replace(location.pathname);   // 読みなおすのが いちばん確実に まっさらに もどる
+  }
+  async function quitByOther(seatsOf) {
+    busy = true; showHints(); $("sheet").classList.remove("show");
+    await banner(`${seatsOf.map(chip).join("")} ${seatsOf.map(k => NAMES[k]).join("・") || "あいて"} が おわりにしました`, 2600);
+    toMenu();
+  }
+  function menu() {
+    const remote = mode !== "solo";
+    overlay(`<div class="card"><h2>メニュー</h2>
+      <button class="big2" id="mBack">つづける</button>
+      ${remote ? "" : '<button class="big2" id="mRe">はじめから やりなおす</button>'}
+      <button class="big2" id="mQuit">やめて はじめの がめんに もどる</button>
+      ${remote ? '<div class="sub">あいてとの テレビでんわも おわります</div>' : ""}
+      <button class="small" id="mSet">おとなの せってい</button></div>`);
+    $("mBack").onclick = hideOverlay;
+    if ($("mRe")) $("mRe").onclick = () => { hideOverlay(); game = 0; wins = [0, 0, 0]; totals = [0, 0, 0]; newGame(); };
+    $("mQuit").onclick = () => { if (mode === "host") NET.broadcast({ t: "quit", seats: [...mySeats] }); else if (mode === "guest") NET.send({ t: "quit" }); setTimeout(toMenu, 300); };
+    $("mSet").onclick = () => settings(menu);
+  }
+  function settings(back) {
+    const opt = (k, v, label) => `<button class="opt ${CFG[k] === v ? "on" : ""}" data-k="${k}" data-v="${v}">${label}</button>`;
+    overlay(`<div class="card set"><button class="x" id="sX">×</button><h2>おとなの せってい</h2>
+      <div class="lab">おとの おおきさ</div><div class="opts">${opt("sfx", 0, "なし")}${opt("sfx", 1, "小")}${opt("sfx", 2, "中")}${opt("sfx", 3, "大")}</div>
+      <div class="lab">えんしゅつ</div><div class="opts">${opt("fx", 2, "はで")}${opt("fx", 1, "ひかえめ")}</div>
+      <div class="lab">つながりかた（テスト用）</div><div class="opts">${opt("relay", 0, "ふつう")}${opt("relay", 1, "中継サーバーだけ")}</div>
+      <div class="sub" id="linkInfo">${NET.role ? "いまの つながり：しらべています…" : "「中継サーバーだけ」で つながれば、家の外どうしでも つながります"}</div>
+      <button class="small" id="sSnd">おとの テスト（なおす）</button><div class="sub" id="sndInfo">${soundInfo()}</div>
+      <button class="small" id="sRoom">あたらしい へやに する</button><div class="sub">まえに おくった リンクは つかえなくなります</div>
+      <div class="ver">版 ${VERSION}</div>
+      <button class="big2" id="sClose">とじる</button></div>`);
+    document.querySelectorAll(".opt").forEach(b => b.onclick = () => { CFG[b.dataset.k] = +b.dataset.v; saveCFG(); settings(back); });
+    $("sX").onclick = $("sClose").onclick = () => back ? back() : hideOverlay();
+    $("sSnd").onclick = () => { if (ctx) rebuildAudio("テスト"); else audio(); setTimeout(() => { SFX.place(); setTimeout(() => SFX.flip(1, 1), 220); }, 60); setTimeout(() => { $("sndInfo").textContent = soundInfo(); }, 600); };
+    $("sRoom").onclick = () => { NET.newRoom(); $("sRoom").textContent = "つぎに よぶときから あたらしい へやです"; };
+    if (NET.role) NET.linkType().then(x => { const e = $("linkInfo"); if (e) e.textContent = "いまの つながり：" + x; });
+  }
+  let noteT = 0;
+  function note(html) { const n = $("note"); n.innerHTML = html + '<button id="noteX">とじる</button>'; n.classList.add("show"); $("noteX").onclick = () => n.classList.remove("show"); }
 
   // ---- タップ：いちばん近いマス ----
   board.addEventListener("click", e => {
@@ -357,19 +441,14 @@
     SB.CELLS.forEach((c, i) => { const p = pos(i), d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < bd) { bd = d; best = i; } });
     if (bd < (s * .95) ** 2) play(best);
   });
-  let armed = 0;
-  $("restart").onclick = () => {
-    if (mode !== "solo") return;
-    if (Date.now() - armed < 2500) { game = 0; wins = [0, 0, 0]; totals = [0, 0, 0]; newGame(); return; }
-    armed = Date.now(); $("restart").textContent = "もういちど おすと はじめから"; setTimeout(() => $("restart").textContent = "はじめから", 2500);
-  };
+  $("restart").onclick = () => { audio(); menu(); };
   addEventListener("resize", () => layout());
   // 演出のコマ送り
   let lastT = performance.now();
-  (function loop(t) { FX.step(Math.min(.05, (t - lastT) / 1000)); lastT = t; requestAnimationFrame(loop); })(lastT);
+  (function loop(t) { if (t - lastT >= 30) { FX.step(Math.min(.05, (t - lastT) / 1000)); lastT = t; } requestAnimationFrame(loop); })(lastT);
 
   window.SANBASI = { get state() { return S; }, get busy() { return busy; }, get mode() { return mode; }, get mySeats() { return [...mySeats]; }, get started() { return started; }, get game() { return game; }, get hist() { return hist.slice(); }, play, nextGame };
   S = SB.replay([], 0); layout(); seats();
-  if (mode === "guest") pickCount(n => { overlay(`<div class="card"><h2>つないでいます…</h2></div>`); NET.guest(n); }, "サンバーシに さそわれました<br>このスマホで あそぶのは？");
+  if (mode === "guest") welcome();
   else startScreen();
 })();
