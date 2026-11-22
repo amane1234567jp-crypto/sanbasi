@@ -1,8 +1,9 @@
+global.SB_R = 6; global.SB_CW = false;
 const SB = require("./rules.js");
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log("NG", m); } };
 const s0 = SB.replay([], 0);
-ok(SB.CELLS.length === 61, "61マス");
-ok(JSON.stringify(SB.counts(s0)) === "[2,2,2]", "初期は各2個");
+ok(SB.CELLS.length === 127, "127マス");
+ok(JSON.stringify(SB.counts(s0)) === "[3,3,3]", "初期は各3個");
 ok(SB.legal(s0, 0).length > 0 && SB.legal(s0, 1).length > 0 && SB.legal(s0, 2).length > 0, "全員に初手");
 let N = 3000, empty = 0, zero = 0, wins = [0, 0, 0];
 for (let g = 0; g < N; g++) {

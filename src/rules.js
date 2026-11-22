@@ -14,14 +14,19 @@ const SB = (() => {
   const IDX = new Map(CELLS.map((c, i) => [c.q + "," + c.r, i]));
   const idx = (q, r) => IDX.has(q + "," + r) ? IDX.get(q + "," + r) : -1;
   const HOLE = -1;   // 泉はなくなった
-  const WILDS = [[R, 0], [R, -R], [0, -R], [-R, 0], [-R, R], [0, R]].map(([q, r]) => idx(q, r));
   const STEP = CELLS.map(c => DIRS.map(([dq, dr]) => idx(c.q + dq, c.r + dr)));   // となりのマス（なければ -1）
 
+  /* はじめの配置（2026-11-22 案B）：みんなの石9個（6つの角＋中ほどに3個）、各色3個を盤のあちこちに離して置く。
+     同じ色が1か所に固まらないので 1手で全部とられず、近くのみんなの石を足がかりに すぐ取り返せる。
+     下の6つを 120°ずつ回して3回ずつ置く（回すたびに色は くろ→しろ→あか と1つずれる）。3 = みんなの石 */
+  const BASE = [[6, 0, 3], [6, -6, 3], [-1, -2, 3], [-4, 2, 2], [2, 0, 0], [-2, -2, 2]];
+  const rot = ([q, r]) => [-(q + r), q];
   function initial() {
     const b = new Array(CELLS.length).fill(EMPTY), castle = new Array(CELLS.length).fill(false);
-    WILDS.forEach(i => { b[i] = WILD; });
-    if (CENTER_WILD) b[idx(0, 0)] = WILD;
-    DIRS.forEach(([q, r], i) => { b[idx(q, r)] = i % 3; });                    // 中央のまわり：くろ・しろ・あか・くろ・しろ・あか
+    for (const [q, r, c] of BASE) {
+      let p = [q, r];
+      for (let k = 0; k < 3; k++) { const i = idx(p[0], p[1]); if (i >= 0) b[i] = c === WILD ? WILD : (c + k) % 3; p = rot(p); }
+    }
     return { b, castle };
   }
   // 色 p が マス i に置いたときに返る石（方向ごと、近い順）
@@ -75,6 +80,6 @@ const SB = (() => {
     if (top.length > 1) { const mt = Math.max(...top.map(i => totals[i])); top = top.filter(i => totals[i] === mt); }
     return top;
   }
-  return { R, NP, EMPTY, WILD, WILDS, CELLS, HOLE, idx, initial, flipsFor, legal, counts, replay, winners, setChampion };
+  return { R, NP, EMPTY, WILD, get WILDS() { const b = initial().b; return b.map((v, i) => v === WILD ? i : -1).filter(i => i >= 0); }, CELLS, HOLE, idx, initial, flipsFor, legal, counts, replay, winners, setChampion };
 })();
 if (typeof module !== "undefined") module.exports = SB;
