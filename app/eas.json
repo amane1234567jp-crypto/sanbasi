@@ -26,7 +26,8 @@
         "appleTeamId": "ZGYPGQ9WPN",
         "ascApiKeyPath": "./asc.p8",
         "ascApiKeyIssuerId": "2fa8da34-49c0-4c52-aae7-77f748a041f7",
-        "ascApiKeyId": "FLAJQ8V396"
+        "ascApiKeyId": "FLAJQ8V396",
+        "ascAppId": "6838193735"
       }
     }
   }
