@@ -80,7 +80,10 @@
       "expo-asset"
     ],
     "extra": {
-      "pushReady": true
+      "pushReady": true,
+      "eas": {
+        "projectId": "919aed4f-750d-4d28-ba0c-3dcbbff1b225"
+      }
     },
     "owner": "uchinoaji-app"
   }
