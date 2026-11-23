@@ -69,3 +69,8 @@
 - 「いつもの3人」ボタンは つけない（あまねさん）
 - テスト：tests/people-e2e.py（にせ中継 tests/mock-relay.js：とうろく3人・pending・よびだし・いまは むり・ほかの ひとも よぶ・4人あふれ・自動とうろく）
 - アプリの通知は EAS のプロジェクトができてから（app.json の pushReady を true に）
+
+## 2026-11-23 TestFlight
+- App Store Connect に「サンバーシ」の枠を作成（Apple ID 6838193735、SKU sanbasi、日本語、アクセス制限なし）
+- eas.json に ascAppId を記入。iOS ビルド 1.0.0(1) を TestFlight へ送信済み（Apple 側で処理中）
+- 残り：テスターのグループ作成・招待、実機テスト
