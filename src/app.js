@@ -423,7 +423,7 @@
   }
   /* ---------- とうろくした ひと と よびだし（2026-11-22 決定） ----------
      とうろく：リンク1本（LINE のグループに送ってよい）。開いた人と さそった人が とうろくされる
-     よぶ：「だれと あそぶ？」で 3人になるまで えらぶ →「あそぼう！」→ えらんだ人 全員に 通知（アプリ）＋ LINE で しらせる
+     よぶ：「だれと あそぶ？」で 3人になるまで えらぶ →「えらんだ ひとを よぶ」→ えらんだ人 全員に 通知（アプリ）＋ LINE で しらせる
      よばれた人：「はいる（1人／2人）」か「いまは むり」（さそった人の画面に すぐ出る）
      いっしょに 3人で遊んだ人どうしは 自動で とうろく */
   let screenTok = 0;
@@ -447,7 +447,7 @@
         <div class="sub big">${need > 0 ? `あと ${need}にん えらんでね` : "そろったよ！"}</div>
         <div id="chooserList">${list.length ? list.map(x => `<button class="person ${sel.has(x.pid) ? "on" : ""}" data-pid="${x.pid}" ${!sel.has(x.pid) && need <= 0 ? "disabled" : ""}>${esc(pnames(x))}${x.names.length > 1 ? '<span class="cnt">（ふたり）</span>' : ""}</button>`).join("")
           : `<div class="sub">まだ とうろくした ひとが いません。<br>「あたらしい ひとを とうろく」から さそってね</div>`}</div>
-        <button class="big1" id="goPlay" ${sel.size && need <= 0 ? "" : "disabled"}>あそぼう！</button>
+        <button class="big1" id="goPlay" ${sel.size && need <= 0 ? "" : "disabled"}>えらんだ ひとを よぶ</button>
         <button class="big2" id="goReg">あたらしい ひとを とうろく</button>
         <button class="small" id="goLink">とうろく しないで リンクで さそう</button>
         <button class="small" id="goBack">もどる</button></div>`);
@@ -642,7 +642,7 @@
     overlay(`<div class="card"><h2>メニュー</h2>
       <button class="big2" id="mBack">つづける</button>
       ${remote ? "" : '<button class="big2" id="mRe">はじめから やりなおす</button>'}
-      <button class="big2" id="mQuit">やめて はじめの がめんに もどる</button>
+      <button class="big2" id="mQuit">ゲームを やめて メニューに もどる</button>
       ${remote ? '<div class="sub">あいてとの テレビでんわも おわります</div>' : ""}
       <button class="small" id="mSet">おとなの せってい</button></div>`);
     $("mBack").onclick = hideOverlay;
