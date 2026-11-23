@@ -467,7 +467,7 @@
     const text = `${me}です。3人で遊べるリバーシ「サンバーシ」で、いっしょに遊びませんか？ 下のリンクを開くと登録できます。\n${url}`;
     let qr = ""; if (typeof qrcode !== "undefined") { const g = qrcode(0, "M"); g.addData(url); g.make(); qr = g.createSvgTag({ cellSize: 4, margin: 2 }); }
     overlay(`<div class="card adult"><h2>相手を登録する</h2>
-      <div class="sub">このリンクを開いた人と、この端末が登録されます。<b>LINEのグループに送れば、何人でも</b>登録できます。送っても、すぐにはゲームは始まりません。</div>
+      <div class="sub">このリンクを開いた人と、この端末が登録されます。<b>LINEのグループに送れば、何人でも</b>登録できます。</div>
       <div class="msg">${esc(text).replace(/\n/g, "<br>")}</div>
       <button class="btn line" id="regLine">LINEで送る</button>
       <details><summary>ほかの方法で送る</summary><button class="small" id="regCopy">文面をコピー</button><div class="qr">${qr}</div><div class="sub">そばにいる人は QRコードを読み取ってください</div></details>
