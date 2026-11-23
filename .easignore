@@ -1,0 +1,10 @@
+shots/
+__pycache__/
+node_modules/
+app/android/
+app/ios/
+app/.expo/
+app/asc.p8
+app/keys/
+sim/
+tests/
