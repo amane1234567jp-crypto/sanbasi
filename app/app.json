@@ -80,7 +80,7 @@
       "expo-asset"
     ],
     "extra": {
-      "pushReady": false
+      "pushReady": true
     },
     "owner": "uchinoaji-app"
   }
