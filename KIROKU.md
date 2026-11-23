@@ -47,7 +47,7 @@
 - bundle id / package：com.uchinoaji.sanbasi。Apple チーム・ASC の鍵 ID は うちのあじ と同じ（eas.json）。ascAppId は App Store Connect にアプリの枠を作ってから入れる
 - ページ ↔ 殻：src/native.js（共有・Android のカメラ許可）。アプリから送る招待リンクは 公開中の Web 版（GitHub Pages）をさす
 - ビルド：.github/workflows/sanbasi-app-eas.yml（app/BUILD。はじめてのとき EAS のプロジェクトを作る）、sanbasi-app-ios.yml（app/BUILD_IOS。GitHub の Mac で作って TestFlight へ）、sanbasi-app-android.yml（app/BUILD_APK。テスト用 APK）
-- 必要な鍵（このリポジトリの Secrets）：EXPO_TOKEN・ASC_API_KEY_P8（テレビ電話リバーシと同じもの）
+- 必要な鍵（このリポジトリの Secrets）：EXPO_TOKEN（Expo の uchinoaji アカウントの github-sanbasi）・ASC_API_KEY_P8（App Store Connect の API キー FLAJQ8V396。リバーシの MKX36V742D のファイルは手元になかったので こちらを使う）
 
 ## 2026-11-22 だれかが いなくなったとき（決定：複雑にしない）
 - 親（さそった人）でも ほかの人でも、いなくなったら その対局は おわり → 全員 はじめの画面へ。ただし 30秒は まつ（電話・LINE・電波の切れめ）。「○○を まっています（あと N びょう）」を全員に出す。もどれば つづき
