@@ -1,0 +1,70 @@
+Script started on 2026-11-23 02:10:23+00:00 [COMMAND="npx eas-cli build -p ios --profile production " <not executed on terminal>]
+
+⠙⠹⠸Using EAS CLI without version control system is not recommended, use this mode only if you know what you are doing.
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+
+
+You've reached your included build credits this billing period.
+New builds are blocked until your billing period resets. Upgrade your plan to continue building.: https://expo.dev/accounts/uchinoaji-app/settings/billing Run eas billing:subscribe starter --account uchinoaji-app to upgrade to the Starter plan.
+
+✔ Using remote iOS credentials (Expo server)
+
+⠋ Linking bundle identifier com.uchinoaji.sanbasi⠙ Linking bundle identifier com.uchinoaji.sanbasi⠹ Linking bundle identifier com.uchinoaji.sanbasi⠸ Registering bundle identifier com.uchinoaji.sanbasi⠼ Registering bundle identifier com.uchinoaji.sanbasi✔ Bundle identifier registered com.uchinoaji.sanbasi
+⠋ Syncing capabilities⠙ Syncing capabilities⠹ Syncing capabilities⠸ Syncing capabilities✔ Synced capabilities: Enabled: Push Notifications
+⠋ Syncing capabilities identifiersSkipping capability identifier syncing because the current Apple authentication session is not using Cookies (username/password).
+⠋ Syncing capabilities identifiers✔ Synced capability identifiers: No updates
+
+⠋ Fetching Apple distribution certificates⠙ Fetching Apple distribution certificates✔ Fetched Apple distribution certificates
+? Reuse this distribution certificate?
+Cert ID: 4MM94LCVML, Serial number: 3D9F11464DC17FC371991EDD49CD51BF, Team ID: ZGYPGQ9WPN, Team name: UCHINOAJI (Company/Organization)
+    Created: 1 month ago, Updated: 1 month ago,
+    Expires: Mon, 27 Sep 2027 12:53:03 UTC
+    📲 Used by: @uchinoaji-app/uchinoaji,@uchinoaji-app/kotoba-tane,@uchinoaji-app/marushima-reversi › (Y/n)✔ Reuse this distribution certificate?
+Cert ID: 4MM94LCVML, Serial number: 3D9F11464DC17FC371991EDD49CD51BF, Team ID: ZGYPGQ9WPN, Team name: UCHINOAJI (Company/Organization)
+    Created: 1 month ago, Updated: 1 month ago,
+    Expires: Mon, 27 Sep 2027 12:53:03 UTC
+    📲 Used by: @uchinoaji-app/uchinoaji,@uchinoaji-app/kotoba-tane,@uchinoaji-app/marushima-reversi … yes
+Using distribution certificate with serial number 3D9F11464DC17FC371991EDD49CD51BF
+? Generate a new Apple Provisioning Profile? › (Y/n)✔ Generate a new Apple Provisioning Profile? … yes
+⠋ Creating Apple provisioning profile⠙ Creating Apple provisioning profile⠹ Creating Apple provisioning profile⠸ Creating Apple provisioning profile⠼ Creating Apple provisioning profile⠴ Creating Apple provisioning profile⠦ Creating Apple provisioning profile✔ Created Apple provisioning profile
+✔ Created provisioning profile
+
+Project Credentials Configuration
+
+Project                   @uchinoaji-app/sanbasi
+Bundle Identifier         com.uchinoaji.sanbasi
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             3D9F11464DC17FC371991EDD49CD51BF
+Expiration Date           Mon, 27 Sep 2027 12:53:03 UTC
+Apple Team                ZGYPGQ9WPN (UCHINOAJI (Company/Organization))
+Updated                   1 month ago
+                          
+Provisioning Profile      
+Developer Portal ID       THV82AH3C6
+Status                    active
+Expiration                Mon, 27 Sep 2027 12:53:03 UTC
+Apple Team                ZGYPGQ9WPN (UCHINOAJI (Company/Organization))
+Updated                   0 second ago
+                          
+All credentials are ready to build @uchinoaji-app/sanbasi (com.uchinoaji.sanbasi)
+
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+⠋ Uploading to EAS Build (0 / 407 KB)⠙ Uploading to EAS Build (407 KB / 407 KB)⠹ Uploading to EAS Build (407 KB / 407 KB)✔ Uploaded to EAS 
+⠋ Computing project fingerprint⠙ Computing project fingerprint⠹ Computing project fingerprint⠸ Computing project fingerprint⠼ Computing project fingerprint⠴ Computing project fingerprint⠦ Computing project fingerprint⠧ Computing project fingerprint⠇ Computing project fingerprint⠏ Computing project fingerprint⠋ Computing project fingerprint⠙ Computing project fingerprint⠹ Computing project fingerprint⠸ Computing project fingerprint✔ Computed project fingerprint
+This account has used its builds from the Free plan this month, which will reset in 7 days (on Tue Dec 01 2026). Upgrade your plan for more builds with shorter wait times and longer timeouts, and to run more builds concurrently with a subscription plan. https://expo.dev/accounts/uchinoaji-app/settings/billing
+Run eas billing:subscribe starter --account uchinoaji-app to upgrade to the Starter plan.
+? Open the Starter plan checkout in your browser now? › (y/N)✔ Open the Starter plan checkout in your browser now? … no
+    Error: build command failed.
+⠙npm notice
+npm notice New major version of npm available! 10.9.9 -> 12.2.3
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.3
+npm notice To update run: npm install -g npm@12.2.3
+npm notice
+⠙
+Script done on 2026-11-23 02:10:39+00:00 [COMMAND_EXIT_CODE="1"]
+FAILED
