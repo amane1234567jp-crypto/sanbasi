@@ -469,7 +469,7 @@
       const chosen = list.filter(x => sel.has(x.pid)).map(pnames).join(" と ");
       overlay(`<div class="card chooser"><h2>だれと あそぶ？</h2>
         ${waits.map((w, k) => `<button class="big1 waitIn" data-k="${k}">${esc(wnames(w))}が まっています<small>おして はいる</small></button>`).join("")}
-        ${list.length ? `<div class="sub big">${need > 0 ? `あと ${need}にん えらんでね` : "そろったよ！"}</div>
+        ${list.length ? `${need > 0 ? `<div class="sub big">あと ${need}にん えらんでね</div>` : ""}
           <div id="chooserList">${list.map(x => `<button class="person ${sel.has(x.pid) ? "on" : ""}" data-pid="${x.pid}" ${!sel.has(x.pid) && need <= 0 ? "disabled" : ""}>${esc(pnames(x))}${x.names.length > 1 ? '<span class="cnt">（ふたり）</span>' : ""}</button>`).join("")}</div>
           ${need <= 0 ? `<button class="big1" id="goPlay">${esc(chosen)}を よぶ</button>` : ""}`
         : `<div class="sub big" id="chooserList">まだ だれも いません</div><button class="big1" id="goOther">ひとを さそう</button>`}
