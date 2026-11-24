@@ -16,7 +16,7 @@ async def main():
     async with async_playwright() as pw:
         b = await pw.chromium.launch(args=ARGS)
         A = await newp(b); await A.goto(BASE); await A.click("#goFar"); await A.click("#p1"); await names(A, 1, "ばあば")
-        await A.wait_for_selector("#goReg"); await A.click("#goReg"); await A.wait_for_selector("#regLine")
+        await A.wait_for_selector("#goReg"); await A.click("#goReg"); await A.wait_for_selector("#sLine")
         await A.screenshot(path="/home/claude/sanbasi/shots/reg-screen.png")
         reg = await A.evaluate("PEOPLE.regURL()"); print("とうろくリンク:", reg.split("?")[1][:60], "…")
         # B（ふたり）・C・D が 同じリンクを ひらく（LINE のグループに 送った想定）
@@ -28,7 +28,7 @@ async def main():
             await p.wait_for_function("document.querySelector('#ov').textContent.includes('登録しました')", timeout=15000)
             devs[key] = p
         print("B の とうろくした ひと:", await people(devs["B"]))
-        await A.click("#regBack"); await A.wait_for_function("PEOPLE.list().length>=3", timeout=25000)
+        await A.click("#sBack"); await A.wait_for_function("PEOPLE.list().length>=3", timeout=25000)
         print("A に 届いた:", await people(A))
         await A.screenshot(path="/home/claude/sanbasi/shots/chooser.png")
         # A：C と D を えらんで あそぼう

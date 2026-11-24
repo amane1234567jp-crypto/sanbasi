@@ -146,8 +146,8 @@ const NET = (() => {
 
   // ---- ゲスト ----
   let hello = null;
-  async function guest(seats, names) {
-    N.role = "guest"; hello = { t: "hello", dev, seats, names: names || [], pid: PEOPLE.pid };
+  async function guest(seats, names, extra) {
+    N.role = "guest"; hello = Object.assign({ t: "hello", dev, seats, names: names || [], pid: PEOPLE.pid }, extra || {});
     await camera();
     const opt = Object.assign({}, OPT, { config: { iceServers: [...STUN, ...(await turnServers())], iceTransportPolicy: CFG.relay ? "relay" : "all" } });
     N.peer = makePeer(null, opt);
@@ -210,6 +210,7 @@ const NET = (() => {
   N.host = host; N.guest = guest;
   // アプリの中（http://127.0.0.1…）から送るリンクは 公開中の Web 版を さす
   const PUBLIC = window.RVNative ? "https://amane1234567jp-crypto.github.io/sanbasi/" : location.origin + location.pathname;
-  N.inviteURL = () => PUBLIC + "?r=" + N.room + (ps ? "&ps=" + ps : "") + "&openExternalBrowser=1";
+  const relayQ = new URLSearchParams(location.search).get("relay");   // 手元の確認用の にせ中継も 引きつぐ
+  N.inviteURL = () => PUBLIC + "?r=" + N.room + (ps ? "&ps=" + ps : "") + (relayQ ? "&relay=" + relayQ : "") + "&openExternalBrowser=1";
   return N;
 })();

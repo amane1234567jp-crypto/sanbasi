@@ -4,6 +4,10 @@
 //   POST {op:"accept",  id, secret, to, names, url?}    … とうろくリンクを開いた：招待した人（to）に知らせる（通知を受けとれれば 通知も）
 //   POST {op:"pending", id, secret}                     … 自分あての「とうろく」を受けとる（受けとったら消す）
 //   POST {op:"call",    id, secret, to, title, body, url, tag} … 相手に「あそぼう」の通知を送る
+//   POST {op:"wait",    id, secret, to:[id..], room, n, names} … to の人たちを 自分の部屋で 待っている（5秒ごとに 送りなおす）。
+//                                                    to のうち 自分を待っている人（20秒以内）を others で返す
+//   POST {op:"peek",    id, secret}                  … 自分を 待っている人 ぜんぶ（others：[{id, room, n, names}]）
+//   POST {op:"unwait",  id, secret}                  … 待つのを やめた（2026-11-24：おなじころに よびあっても つながるように）
 // （Supabase に デプロイ済み：uchinoaji プロジェクトの sb-push。この控えと 中身は同じ）
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
@@ -66,6 +70,25 @@ async function handle(b: Record<string, any>) {
     const { data } = await db.from("sb_pending").select("from_id,names,at").eq("to_id", m.id).order("at", { ascending: true }).limit(20);
     if (data && data.length) await db.from("sb_pending").delete().eq("to_id", m.id).in("from_id", data.map((r: any) => r.from_id));
     return [200, { ok: true, list: (data || []).map((r: any) => ({ pid: r.from_id, names: r.names })) }];
+  }
+  if (b.op === "wait" || b.op === "peek" || b.op === "unwait") {
+    const m = await me(b.id, b.secret);
+    if (!m) return [403, { error: "who" }];
+    if (b.op === "unwait") { await db.from("sb_waits").delete().eq("host_id", m.id); return [200, { ok: true }]; }
+    const fresh = new Date(Date.now() - 20e3).toISOString();
+    let q = db.from("sb_waits").select("host_id,room,n,names,at").contains("to_ids", [m.id]).gt("at", fresh).neq("host_id", m.id);
+    if (b.op === "wait") {
+      const to = (Array.isArray(b.to) ? b.to : []).filter(ok).filter((x: string) => x !== m.id).slice(0, 4);
+      if (!to.length) return [400, { error: "bad to" }];
+      if (!/^[a-z0-9]{4,40}$/.test(String(b.room || ""))) return [400, { error: "bad room" }];
+      const { error } = await db.from("sb_waits").upsert({ host_id: m.id, to_ids: to, room: b.room, n: Math.max(0, Math.min(3, b.n | 0)), names: namesOf(b.names), at: new Date().toISOString() });
+      if (error) return [500, { error: error.message }];
+      q = q.in("host_id", to);
+    }
+    // ついでに 古い待ちを そうじ（1時間より前）
+    if (Math.random() < 0.05) await db.from("sb_waits").delete().lt("at", new Date(Date.now() - 3600e3).toISOString());
+    const { data } = await q.order("at", { ascending: false }).limit(5);
+    return [200, { ok: true, others: (data || []).map((r: any) => ({ id: r.host_id, room: r.room, n: r.n, names: r.names })) }];
   }
   if (b.op === "call") {
     const from = await me(b.id, b.secret);

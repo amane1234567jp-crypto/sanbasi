@@ -15,7 +15,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.uchinoaji.sanbasi",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "とおくの家族と顔を見ながら3人で対戦するために、カメラを使います。",

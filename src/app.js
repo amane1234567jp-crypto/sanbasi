@@ -242,7 +242,12 @@
         roster.push({ role: "guest", dev: m.dev, peer, seats: free.slice(0, want), online: true, names: (m.names || []).slice(0, want).map(s => String(s).slice(0, 12)), pid: typeof m.pid === "string" ? m.pid.slice(0, 64) : "" });
       }
       const iv = invited.find(x => x.pid === m.pid); if (iv) iv.st = "in";
-      if (!started && !freeSeats().length) { started = true; hideOverlay(); clearTimeout(inviteT); autoRegister(); setTimeout(() => { SFX.sparkle(); banner("そろったね！ はじめよう", 1400).then(() => { SFX.turn(); banner(`${chip(S.turn)} ${esc(who(S.turn))} から`, 1100); }); }, 300); }
+      // 待ちあわせで こちらに 来た人が よんでいた人は、こちらからも よぶ（その人の通知は もう ない部屋を さしている）
+      if (Array.isArray(m.inv) && !started) for (const y of m.inv.slice(0, 4)) {
+        if (!y || typeof y.pid !== "string" || y.pid === PEOPLE.pid || invited.some(z => z.pid === y.pid) || roster.some(z => z.pid === y.pid)) continue;
+        const row = { pid: y.pid.slice(0, 64), names: (y.names || []).slice(0, 2).map(t => String(t).slice(0, 12)), st: "call" }; invited.push(row); callInvited(row);
+      }
+      if (!started && !freeSeats().length) { started = true; sending = false; PEOPLE.unwait(); clearTimeout(holdT); hideOverlay(); clearTimeout(inviteT); autoRegister(); setTimeout(() => { SFX.sparkle(); banner("そろったね！ はじめよう", 1400).then(() => { SFX.turn(); banner(`${chip(S.turn)} ${esc(who(S.turn))} から`, 1100); }); }, 300); }
       publish(); videoLabels(); seats(); showHints();
     }
     if (m.t === "decline") {
@@ -429,21 +434,37 @@
   let screenTok = 0;
   const people = () => PEOPLE.list();
   const pnames = x => (x.names || []).join("・") || "？";
-  // 自分のリンクで とうろくした人を 受けとる（ひらいている間は 10秒ごと）
-  let pollT = 0;
-  function pollPending() {
-    clearInterval(pollT);
-    const once = async () => { const got = await PEOPLE.pending(); if (got.length) { SFX.sparkle(); note(`<b>${got.map(esc).join("、")}</b> が とうろく しました！`); const c = $("chooserList"); if (c && chooserRedraw) chooserRedraw(); } };
-    once(); pollT = setInterval(() => { if (!NET.role || !started) once(); }, 10000);
+  /* 自分のリンクで とうろくした人を 受けとる（リバーシ 1.0.7 の教訓）
+     ・とうろくの画面を ひらいてから 24時間は、前に出ているあいだ たしかめつづける（はじめの15分は10秒ごと・あとは30秒ごと）
+     ・LINE から もどったとき・「だれと あそぶ？」を ひらいたときにも たしかめる
+     ・対局中は たしかめない */
+  async function pollPending() {
+    if (started) return;
+    const got = await PEOPLE.pending();
+    if (got.length) { SFX.sparkle(); note(`<b>${got.map(esc).join("、")}</b> が とうろく しました！`); if ($("chooserList") && chooserRedraw) chooserRedraw(); }
   }
+  let pendT = 0;
+  function pendStart() { CFG.pendSince = Date.now(); CFG.pendUntil = Date.now() + 24 * 3600e3; saveCFG(); if (!pendT) pendT = setTimeout(pendTick, 10000); }
+  async function pendTick() {
+    clearTimeout(pendT); pendT = 0;
+    const now = Date.now();
+    if (!CFG.pendUntil || now > CFG.pendUntil) { if (CFG.pendUntil) { delete CFG.pendUntil; delete CFG.pendSince; saveCFG(); } return; }
+    if (document.visibilityState !== "hidden") await pollPending();
+    pendT = setTimeout(pendTick, now - (CFG.pendSince || 0) < 15 * 60e3 ? 10000 : 30000);
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !started && mode !== "guest") { pollPending(); if (CFG.pendUntil && !pendT) pendTick(); } });
   let chooserRedraw = null;
   function chooser(n, names) {
     const tok = ++screenTok, sel = new Set();
+    let waits = [];   // いま 自分を まっている人（よばれたのに 通知を 見のがしていても ここから はいれる）
     PEOPLE.reg(false);
+    PEOPLE.peek().then(w => { waits = w; draw(); });
     const draw = () => {
       if (tok !== screenTok) return;
       const list = people(), count = [...sel].reduce((s, pid) => s + ((list.find(x => x.pid === pid) || {}).names || [1]).length, 0), need = 3 - n - count;
+      const wnames = w => (w.names || []).join("・") || ((list.find(x => x.pid === w.id) || {}).names || ["あいて"]).join("・");
       overlay(`<div class="card chooser"><h2>だれと あそぶ？</h2>
+        ${waits.map((w, k) => `<button class="big1 waitIn" data-k="${k}">${esc(wnames(w))}が まっています<small>おして はいる</small></button>`).join("")}
         <div class="sub big">${need > 0 ? `あと ${need}にん えらんでね` : "そろったよ！"}</div>
         <div id="chooserList">${list.length ? list.map(x => `<button class="person ${sel.has(x.pid) ? "on" : ""}" data-pid="${x.pid}" ${!sel.has(x.pid) && need <= 0 ? "disabled" : ""}>${esc(pnames(x))}${x.names.length > 1 ? '<span class="cnt">（ふたり）</span>' : ""}</button>`).join("")
           : `<div class="sub">まだ とうろくした ひとが いません。<br>「あたらしい ひとを とうろく」から さそってね</div>`}</div>
@@ -452,6 +473,7 @@
         <button class="small" id="goLink">とうろく しないで リンクで さそう</button>
         <button class="small" id="goBack">もどる</button></div>`);
       document.querySelectorAll(".person").forEach(b => b.onclick = () => { const p = b.dataset.pid; sel.has(p) ? sel.delete(p) : sel.add(p); draw(); });
+      document.querySelectorAll(".waitIn").forEach(b => b.onclick = () => goJoin(waits[+b.dataset.k], n, names, []));
       $("goPlay").onclick = () => { if (!sel.size || need > 0) return; const inv = list.filter(x => sel.has(x.pid)).map(x => ({ pid: x.pid, names: x.names, st: "call" })); startHost(n, names, inv); };
       $("goReg").onclick = () => regScreen(() => chooser(n, names));
       $("goLink").onclick = () => startHost(n, names, []);
@@ -459,28 +481,55 @@
     };
     chooserRedraw = draw; draw(); pollPending();
   }
-  // とうろく用の リンクを 送る画面（親が操作するので ふつうの漢字かなまじり）
-  async function regScreen(back) {
-    screenTok++;
+  // とうろく用の リンクを 送る画面
+  function regScreen(back) {
     PEOPLE.reg(true);
-    const me = (CFG.names || []).filter(Boolean).join("・") || "わたし", url = PEOPLE.regURL();
-    const text = `${me}です。3人で遊べるリバーシ「サンバーシ」で、いっしょに遊びませんか？ 下のリンクを開くと登録できます。\n${url}`;
-    let qr = ""; if (typeof qrcode !== "undefined") { const g = qrcode(0, "M"); g.addData(url); g.make(); qr = g.createSvgTag({ cellSize: 4, margin: 2 }); }
-    overlay(`<div class="card adult"><h2>相手を登録する</h2>
-      <div class="sub">このリンクを開いた人と、この端末が登録されます。<b>LINEのグループに送れば、何人でも</b>登録できます。</div>
-      <div class="msg">${esc(text).replace(/\n/g, "<br>")}</div>
-      <button class="btn line" id="regLine">LINEで送る</button>
-      <details><summary>ほかの方法で送る</summary><button class="small" id="regCopy">文面をコピー</button><div class="qr">${qr}</div><div class="sub">そばにいる人は QRコードを読み取ってください</div></details>
-      <button class="big2" id="regBack">閉じる</button></div>`);
-    $("regLine").onclick = () => shareText(text);
-    $("regCopy").onclick = () => navigator.clipboard.writeText(text).then(() => { $("regCopy").textContent = "コピーしました。貼り付けて送ってね"; }).catch(() => { });
-    $("regBack").onclick = back;
-    pollPending();
+    const me = (CFG.names || []).filter(Boolean).join("・");
+    pendStart();
+    sendScreen({ title: "相手を登録する", lead: "このリンクを開いた人と、この端末が登録されます。<b>LINEのグループに送れば、何人でも</b>登録できます。",
+      def: MSG.regBody(me), key: "regMsg", url: PEOPLE.regURL(), back, sent: pendStart });
   }
-  async function shareText(text) {
-    if (NATIVE.on) { await NATIVE.share(text); return; }
-    if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } }
-    location.href = "https://line.me/R/share?text=" + encodeURIComponent(text);
+  /* 送る画面（親が操作するので ふつうの漢字かなまじり。テレビ電話リバーシ 1.0.6 と同じ形）
+     文面（書きかえられる・リンクも中に）／緑の「LINEで送る」／小さな「ほかの方法で送る」（ほかのアプリ・コピー・QR）／閉じる */
+  let sending = false;
+  function sendScreen({ title, lead, def, key, url, back, sent }) {
+    screenTok++; sending = true;
+    const full = MSG.withLink(def, url);
+    let qr = ""; if (typeof qrcode !== "undefined") { const g = qrcode(0, "M"); g.addData(url); g.make(); qr = g.createSvgTag({ cellSize: 4, margin: 2 }); }
+    overlay(`<div class="card adult"><h2>${title}</h2>${lead ? `<div class="sub">${lead}</div>` : ""}
+      <label class="lab" for="msgT">送る文面（書きかえられます）</label>
+      <textarea id="msgT" rows="6" maxlength="600"></textarea>
+      <div class="sub tiny">リンクを消してしまっても、送るときに自動で付けます。</div>
+      <button class="small" id="msgReset" hidden>最初の文面に戻す</button>
+      <button class="btn line" id="sLine">LINEで送る</button>
+      <div class="sub done" id="sDone"></div>
+      <details><summary>ほかの方法で送る</summary><button class="small" id="sOther">ほかのアプリで送る</button><button class="small" id="sCopy">文面をコピー</button><div class="qr">${qr}</div><div class="sub">そばにいる人は QRコードを読み取ってください</div></details>
+      <button class="big2" id="sBack">閉じる</button></div>`);
+    const t = $("msgT");
+    t.value = CFG[key] ? MSG.fixLink(CFG[key], url) : full;
+    $("msgReset").hidden = t.value === full;
+    const sync = () => { const same = t.value === full; if (same) delete CFG[key]; else CFG[key] = t.value.slice(0, 600); saveCFG(); $("msgReset").hidden = same; };
+    t.oninput = sync; $("msgReset").onclick = () => { t.value = full; sync(); };
+    const text = () => MSG.fixLink(t.value, url), done = x => { $("sDone").textContent = x; };
+    $("sLine").onclick = () => { openLine(text()); done("LINEで送ったら、相手がリンクを開くのを待ってね"); if (sent) sent(); };
+    $("sOther").onclick = async () => {
+      const r = await shareSheet(text());
+      if (!r.ok) return;   // 閉じただけ：この画面のまま
+      done(r.copy ? "コピーしました。LINEなどに貼り付けて送ってください" : r.sure ? "送りました。相手がリンクを開くのを待ってね" : "送ったら、相手がリンクを開くのを待ってね"); if (sent) sent();
+    };
+    $("sCopy").onclick = () => navigator.clipboard.writeText(text()).then(() => { $("sCopy").textContent = "コピーしました。貼り付けて送ってね"; if (sent) sent(); }).catch(() => { });
+    $("sBack").onclick = () => { sending = false; back(); };
+  }
+  // LINE を直接ひらく（相手を選ぶ画面へ）。ブラウザ版は 新しいタブで（いまの画面＝部屋を 消さないように）
+  function openLine(text) {
+    const u = MSG.lineURL(text);
+    if (NATIVE.on) NATIVE.open(u); else { const w = window.open(u, "_blank"); if (!w) location.href = u; }
+  }
+  // 共有画面。{ ok:送った, copy:コピーを選んだ, sure:送ったか本当に わかる（iPhone のアプリ） }
+  async function shareSheet(text) {
+    if (NATIVE.on) { const r = await NATIVE.share(text); return { ok: !!(r && r.ok), copy: /copy|pasteboard/i.test((r && r.act) || ""), sure: !NATIVE.android }; }
+    if (navigator.share) { try { await navigator.share({ text }); return { ok: true, sure: false }; } catch (e) { return { ok: false }; } }
+    try { await navigator.clipboard.writeText(text); return { ok: true, copy: true }; } catch (e) { return { ok: false }; }
   }
   // とうろくリンクを ひらいた人
   function regWelcome(fd, fn) {
@@ -540,9 +589,13 @@
   }
   const JOIN_KEY = "sanbasi-join";
   function join(n, names) {
-    try { sessionStorage.setItem(JOIN_KEY, JSON.stringify({ room: NET.room, n, names, at: Date.now() })); } catch (e) { }
+    let old = null; try { old = JSON.parse(sessionStorage.getItem(JOIN_KEY)); } catch (e) { }
+    const inv = old && old.room === NET.room && Array.isArray(old.inv) ? old.inv : [];
+    try { sessionStorage.setItem(JOIN_KEY, JSON.stringify({ room: NET.room, n, names, at: Date.now(), inv })); } catch (e) { }
+    // つながらないとき（よんだ人が 待ちあわせで ほかの部屋に 移った など）：自分を 待っている人が いれば そちらへ
+    setTimeout(async function look() { if (NET.open || started || ended) return; const w = await PEOPLE.peek(), hit = w.find(x => x.room !== NET.room); if (hit && !NET.open) return goJoin(hit, n, names, inv); setTimeout(look, 10000); }, 12000);
     setInterval(() => { try { const j = JSON.parse(sessionStorage.getItem(JOIN_KEY)); if (j) { j.at = Date.now(); sessionStorage.setItem(JOIN_KEY, JSON.stringify(j)); } } catch (e) { } }, 5000);
-    overlay(`<div class="card"><h2>つないでいます…</h2><div class="sub" id="waitHint"></div></div>`); NET.guest(n, names);
+    overlay(`<div class="card"><h2>つないでいます…</h2><div class="sub" id="waitHint"></div></div>`); NET.guest(n, names, inv.length ? { inv } : null);
       setTimeout(() => { const h = $("waitHint"); if (h && !started) h.innerHTML = `なかなか つながらないときは、${esc(hostName || "さそった人")}の 端末で「あいてを よぶ」の画面が ひらいているか たしかめてね`; }, 30000);
   }
   // 名前（この端末で遊ぶ人の数だけ）。おなじ よびかたの人がいても わかるように 自分で入れてもらう
@@ -568,6 +621,12 @@
   let hostSid = "", guestSid = "";
   async function startHost(n, names, inv) {
     screenTok++;
+    // 待ちあわせ：よぶ相手が もう 自分を 待っていれば、その部屋に はいる（おなじころに よびあったとき）
+    if (inv && inv.length) {
+      overlay(`<div class="card"><h2>じゅんび しています…</h2></div>`);
+      const w = await PEOPLE.peek(), hit = w.find(x => inv.some(y => y.pid === x.id));
+      if (hit) return goJoin(hit, n, names, inv);
+    }
     hostSid = Math.random().toString(36).slice(2, 10);
     invited = inv || [];
     mode = "host"; roster = [{ role: "host", dev: NET.dev, peer: null, seats: n === 2 ? [0, 1] : [0], online: true, names, pid: PEOPLE.pid }];
@@ -577,13 +636,42 @@
     roster[0].peer = "sanbasi-rm-" + NET.room;
     lobby(); videoLabels();
     if (invited.length) {
-      callInvited();
+      callInvited(); holdWait();
       // 10分 そろわなければ おわり
       clearTimeout(inviteT); inviteT = setTimeout(() => { if (!started) endBy([], "10ぷん まっても そろわなかったので おわります"); }, 600000);
     }
   }
+  /* 待ちあわせ（2026-11-24。リバーシ 1.0.8 の 3人版）
+     ・よんだ人を 自分の部屋で 待っていると 5秒ごとに 中継へ。よんだ人も 同時に 自分を よんで 待っていたら、どちらかに そろえる：
+       人が多く そろっているほう に 入る。同じなら 端末番号の 大きいほうが 動く（両方 同じ決まりで 判断するので かならず 片方に そろう）
+     ・自分の部屋に もう だれか 入っていたら 動かない
+     ・動くときは、自分が よんでいた人を 相手の部屋に 引きつぐ（hello の inv） */
+  let holdT = 0;
+  async function holdWait() {
+    clearTimeout(holdT);
+    if (mode !== "host" || started || ended) { PEOPLE.unwait(); return; }
+    const to = invited.filter(x => x.st !== "in" && x.st !== "no").map(x => x.pid);
+    if (!to.length) { PEOPLE.unwait(); holdT = setTimeout(holdWait, 5000); return; }
+    const mine = roster.reduce((t, r) => t + r.seats.length, 0);
+    const others = await PEOPLE.wait(to, NET.room, mine, roster[0].names);
+    if (mode !== "host" || started) return;
+    const hit = roster.length === 1 && others.find(o => (o.n | 0) > mine || ((o.n | 0) === mine && PEOPLE.pid > o.id));
+    if (hit) return goJoin(hit, roster[0].seats.length, roster[0].names, invited);
+    holdT = setTimeout(holdWait, 5000);
+  }
+  addEventListener("pagehide", () => { if (mode === "host" && !started) PEOPLE.unwait(); });
+  // ほかの人の部屋に 入りに行く（待ちあわせ）。席の数・名前と、引きつぐ よんだ人を 持っていく
+  function goJoin(hit, n, names, inv) {
+    clearTimeout(holdT); PEOPLE.unwait();
+    const carry = (inv || []).filter(x => x.pid !== hit.id && x.st !== "no" && x.st !== "in").map(x => ({ pid: x.pid, names: x.names }));
+    try { sessionStorage.setItem(JOIN_KEY, JSON.stringify({ room: hit.room, n, names, at: Date.now(), inv: carry })); } catch (e) { }
+    try { NET.local && NET.local.getTracks().forEach(tr => tr.stop()); NET.peer && NET.peer.destroy(); } catch (e) { }
+    const q = new URLSearchParams(location.search), ex = ["ps", "relay"].map(k => q.get(k) ? `&${k}=${q.get(k)}` : "").join("");
+    const hn = (hit.names || []).join("・");
+    location.replace(location.pathname + "?r=" + hit.room + (hn ? "&n=" + encodeURIComponent(hn) : "") + "&fp=" + hit.id + ex);
+  }
   function lobby() {
-    if (started || mode === "solo") return;
+    if (started || mode === "solo" || sending) return;
     const myName = (roster[0] && roster[0].names || []).filter(Boolean).join("・");
     const url = NET.room ? NET.inviteURL() + (myName ? "&n=" + encodeURIComponent(myName) : "") : "";
     const seatLine = k => { const x = roster.find(r => r.seats.includes(k)); return `<div class="row">${chip(k)}${NAMES[k]}<span class="n">${x ? esc(nameOf(k) || "") + (x.dev === NET.dev ? "（このスマホ）" : "") : "まっています…"}</span></div>`; };
@@ -597,15 +685,18 @@
         <button class="small" id="recall">もういちど 通知で しらせる</button>
         <button class="small" id="addMore">ほかの ひとも よぶ</button>
         <details><summary>そばに いる ひとには QRコード</summary><div class="qr">${qr}</div><button class="small" id="copy">リンクを コピー</button></details>` :
-       mode === "host" ? (url ? `<div class="qr">${qr}</div>
-        <button class="btn line" id="lineBtn">LINEで おくる</button>
-        <button class="btn" id="copy">リンクを コピー</button>
+       mode === "host" ? (url ? `<button class="btn line" id="lineBtn">LINEで おくる</button>
+        <details><summary>そばに いる ひとには QRコード</summary><div class="qr">${qr}</div><button class="small" id="copy">リンクを コピー</button></details>
         <div class="sub">まえに あそんだ ひとは、じぶんの がめんの「${esc(myName || "あなた")}の へやに はいる」で はいれます（リンクは まえと おなじ）</div>` : `<div class="sub">へやを つくっています…</div>`) : ``}
       </div>`);
     const myN = (roster[0] && roster[0].names || []).filter(Boolean).join("・");
-    const lb = $("lineBtn"), text = invited.length ? `${myN}です。いまサンバーシで遊べるよ！ このリンクをタップしてね。\n${inviteURLFor()}` : "サンバーシで あそぼう！\n" + url;
-    // 共有画面（LINE をえらぶ）。送ると自動でこの画面に戻る。共有画面がない端末は LINE を直接ひらく
-    if (lb) lb.onclick = () => shareText(text);
+    const lb = $("lineBtn");
+    // 送る前に 文面を見て 直せる画面へ（とじると この画面に もどる）
+    if (lb) lb.onclick = () => {
+      const who = invited.filter(x => x.st !== "in" && x.st !== "no").map(pnames).join("・");
+      sendScreen({ title: invited.length ? `${esc(who || "相手")}に知らせる` : "リンクを送る", lead: invited.length ? "LINEでも知らせると、通知を見のがしても気づいてもらえます。" : "リンクを開いた人が、この部屋に入れます（3人そろうと始まります）。",
+        def: MSG.playBody(myN), key: "playMsg", url: invited.length ? inviteURLFor() : url, back: lobby });
+    };
     if ($("recall")) $("recall").onclick = () => callInvited();
     if ($("addMore")) $("addMore").onclick = () => {
       const rest = people().filter(x => !invited.some(y => y.pid === x.pid));
@@ -693,6 +784,7 @@
   S = SB.replay([], 0); layout(); seats();
   const Q0 = new URLSearchParams(location.search);
   PEOPLE.reg(false);   // 名前と（アプリで許可ずみなら）通知の宛先を 中継に
+  if (CFG.pendUntil && mode !== "guest") pendT = setTimeout(pendTick, 3000);   // とうろくの まちを つづける（24時間）
   if (Q0.get("m") === "reg" && Q0.get("fd")) regWelcome(Q0.get("fd"), (Q0.get("fn") || "").slice(0, 30));
   else if (mode === "guest") {
     let j = null; try { j = JSON.parse(sessionStorage.getItem(JOIN_KEY)); } catch (e) { }
