@@ -15,7 +15,7 @@ async def run(counts):
     async with async_playwright() as pw:
         b = await pw.chromium.launch(args=ARGS); errs = []
         host = await page(b, errs, "host"); await host.goto(BASE); await host.click("#goFar")
-        await host.click("#p1" if counts[0] == 1 else "#p2"); await names(host, counts[0], "ホスト"); await host.click("#goLink")
+        await host.click("#p1" if counts[0] == 1 else "#p2"); await names(host, counts[0], "ホスト"); await host.click("#goOther"); await host.click("#goLink")
         await host.wait_for_function("NET.room && NET.peer && NET.peer.open", timeout=20000)
         url = await host.evaluate("NET.inviteURL()")
         guests = []

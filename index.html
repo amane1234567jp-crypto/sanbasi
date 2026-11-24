@@ -159,6 +159,7 @@ body.call .videos { display: flex; }
 .ov textarea#msgT { display: block; width: 100%; font: inherit; font-size: 15px; line-height: 1.55; padding: 10px 12px; margin-top: 6px; border: 2px solid #E9E0CC; border-radius: 12px; background: #fff; resize: vertical; }
 .ov .sub.tiny { font-size: 12px; margin-top: 4px; }
 .ov .sub.done { color: #04913E; font-weight: 700; min-height: 0; }
+.ov .big1 small, .ov .big2 small { display: block; font-size: 13px; font-weight: 400; opacity: .85; margin-top: 2px; }
 .ov .waitIn small { display: block; font-size: 14px; font-weight: 400; opacity: .9; }
 .ov details { margin-top: 10px; font-size: 14px; color: #6E6A75; }
 .ov details summary { cursor: pointer; }
@@ -3280,7 +3281,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 // iPadOS 15.4 より前の Safari 向け
 if (!Array.prototype.at) Array.prototype.at = function (n) { n = Math.trunc(n) || 0; if (n < 0) n += this.length; return this[n]; };
 
-const VERSION = "11/24 12:27 f55a864";
+const VERSION = "11/24 12:49 cef589e";
 /* ---------- サンバーシ 画面と進行 ----------
    1台で3人（となりの ひとと）／テレビ電話で遠隔（とおくの ひとと）。
    効果音（sfx.js）と はでな演出（fx.js）は テレビ電話リバーシのものを そのまま使う。 */
@@ -3737,6 +3738,9 @@ const VERSION = "11/24 12:27 f55a864";
   }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !started && mode !== "guest") { pollPending(); if (CFG.pendUntil && !pendT) pendTick(); } });
   let chooserRedraw = null;
+  /* だれと あそぶ？（2026-11-24 あまねさん「ややこしすぎ。階層化してよいので シンプルに」）
+     この画面は 子どもも見る：とうろくした人を えらぶ だけ。そろうと「〇〇と △△を よぶ」が出る。
+     あたらしい人を さそうのは 下の「ほかの ひとを さそう」→ つぎの画面（親が操作：登録する／今回だけ） */
   function chooser(n, names) {
     const tok = ++screenTok, sel = new Set();
     let waits = [];   // いま 自分を まっている人（よばれたのに 通知を 見のがしていても ここから はいれる）
@@ -3746,23 +3750,33 @@ const VERSION = "11/24 12:27 f55a864";
       if (tok !== screenTok) return;
       const list = people(), count = [...sel].reduce((s, pid) => s + ((list.find(x => x.pid === pid) || {}).names || [1]).length, 0), need = 3 - n - count;
       const wnames = w => (w.names || []).join("・") || ((list.find(x => x.pid === w.id) || {}).names || ["あいて"]).join("・");
+      const chosen = list.filter(x => sel.has(x.pid)).map(pnames).join(" と ");
       overlay(`<div class="card chooser"><h2>だれと あそぶ？</h2>
         ${waits.map((w, k) => `<button class="big1 waitIn" data-k="${k}">${esc(wnames(w))}が まっています<small>おして はいる</small></button>`).join("")}
-        <div class="sub big">${need > 0 ? `あと ${need}にん えらんでね` : "そろったよ！"}</div>
-        <div id="chooserList">${list.length ? list.map(x => `<button class="person ${sel.has(x.pid) ? "on" : ""}" data-pid="${x.pid}" ${!sel.has(x.pid) && need <= 0 ? "disabled" : ""}>${esc(pnames(x))}${x.names.length > 1 ? '<span class="cnt">（ふたり）</span>' : ""}</button>`).join("")
-          : `<div class="sub">まだ とうろくした ひとが いません。<br>「あたらしい ひとを とうろく」から さそってね</div>`}</div>
-        <button class="big1" id="goPlay" ${sel.size && need <= 0 ? "" : "disabled"}>えらんだ ひとを よぶ</button>
-        <button class="big2" id="goReg">あたらしい ひとを とうろく</button>
-        <button class="small" id="goLink">とうろく しないで リンクで さそう</button>
+        ${list.length ? `<div class="sub big">${need > 0 ? `あと ${need}にん えらんでね` : "そろったよ！"}</div>
+          <div id="chooserList">${list.map(x => `<button class="person ${sel.has(x.pid) ? "on" : ""}" data-pid="${x.pid}" ${!sel.has(x.pid) && need <= 0 ? "disabled" : ""}>${esc(pnames(x))}${x.names.length > 1 ? '<span class="cnt">（ふたり）</span>' : ""}</button>`).join("")}</div>
+          ${need <= 0 ? `<button class="big1" id="goPlay">${esc(chosen)}を よぶ</button>` : ""}`
+        : `<div class="sub big" id="chooserList">まだ だれも いません</div><button class="big1" id="goOther">ひとを さそう</button>`}
+        ${list.length ? '<button class="small" id="goOther">ほかの ひとを さそう</button>' : ""}
         <button class="small" id="goBack">もどる</button></div>`);
       document.querySelectorAll(".person").forEach(b => b.onclick = () => { const p = b.dataset.pid; sel.has(p) ? sel.delete(p) : sel.add(p); draw(); });
       document.querySelectorAll(".waitIn").forEach(b => b.onclick = () => goJoin(waits[+b.dataset.k], n, names, []));
-      $("goPlay").onclick = () => { if (!sel.size || need > 0) return; const inv = list.filter(x => sel.has(x.pid)).map(x => ({ pid: x.pid, names: x.names, st: "call" })); startHost(n, names, inv); };
-      $("goReg").onclick = () => regScreen(() => chooser(n, names));
-      $("goLink").onclick = () => startHost(n, names, []);
+      if ($("goPlay")) $("goPlay").onclick = () => { if (!sel.size || need > 0) return; const inv = list.filter(x => sel.has(x.pid)).map(x => ({ pid: x.pid, names: x.names, st: "call" })); startHost(n, names, inv); };
+      $("goOther").onclick = () => inviteMenu(n, names);
       $("goBack").onclick = startScreen;
     };
     chooserRedraw = draw; draw(); pollPending();
+  }
+  // あたらしい人を さそう（親が操作するので ふつうの漢字かなまじり）。2つから えらぶ
+  function inviteMenu(n, names) {
+    screenTok++;
+    overlay(`<div class="card adult"><h2>新しい人を誘う</h2>
+      <button class="big1" id="goReg">登録する<small>次からは「だれと あそぶ？」で選ぶだけで呼べます</small></button>
+      <button class="big2" id="goLink">今回だけ誘う<small>登録しないで、いま遊ぶためのリンクを送ります</small></button>
+      <button class="small" id="imBack">戻る</button></div>`);
+    $("goReg").onclick = () => regScreen(() => chooser(n, names));
+    $("goLink").onclick = () => startHost(n, names, []);
+    $("imBack").onclick = () => chooser(n, names);
   }
   // とうろく用の リンクを 送る画面
   function regScreen(back) {
@@ -3969,15 +3983,14 @@ const VERSION = "11/24 12:27 f55a864";
         <button class="small" id="addMore">ほかの ひとも よぶ</button>
         <details><summary>そばに いる ひとには QRコード</summary><div class="qr">${qr}</div><button class="small" id="copy">リンクを コピー</button></details>` :
        mode === "host" ? (url ? `<button class="btn line" id="lineBtn">LINEで おくる</button>
-        <details><summary>そばに いる ひとには QRコード</summary><div class="qr">${qr}</div><button class="small" id="copy">リンクを コピー</button></details>
-        <div class="sub">まえに あそんだ ひとは、じぶんの がめんの「${esc(myName || "あなた")}の へやに はいる」で はいれます（リンクは まえと おなじ）</div>` : `<div class="sub">へやを つくっています…</div>`) : ``}
+        <details><summary>そばに いる ひとには QRコード</summary><div class="qr">${qr}</div><button class="small" id="copy">リンクを コピー</button></details>` : `<div class="sub">じゅんび しています…</div>`) : ``}
       </div>`);
     const myN = (roster[0] && roster[0].names || []).filter(Boolean).join("・");
     const lb = $("lineBtn");
     // 送る前に 文面を見て 直せる画面へ（とじると この画面に もどる）
     if (lb) lb.onclick = () => {
       const who = invited.filter(x => x.st !== "in" && x.st !== "no").map(pnames).join("・");
-      sendScreen({ title: invited.length ? `${esc(who || "相手")}に知らせる` : "リンクを送る", lead: invited.length ? "LINEでも知らせると、通知を見のがしても気づいてもらえます。" : "リンクを開いた人が、この部屋に入れます（3人そろうと始まります）。",
+      sendScreen({ title: invited.length ? `${esc(who || "相手")}に知らせる` : "リンクを送る", lead: invited.length ? "LINEでも知らせると、通知を見のがしても気づいてもらえます。" : "リンクを開いた人と、いっしょに遊べます。3人そろうと始まります。",
         def: MSG.playBody(myN), key: "playMsg", url: invited.length ? inviteURLFor() : url, back: lobby });
     };
     if ($("recall")) $("recall").onclick = () => callInvited();
@@ -4035,7 +4048,6 @@ const VERSION = "11/24 12:27 f55a864";
       <div class="lab">とうろくした ひと</div>${people().length ? people().map(x => `<div class="row">${esc(pnames(x))}<button class="small pDel" data-pid="${x.pid}">けす</button></div>`).join("") : '<div class="sub">まだ いません</div>'}
       <button class="small" id="sReg">相手を登録する（リンクを送る）</button>
       <button class="small" id="sName">なまえを かえる（いま：${esc((CFG.names || []).filter(Boolean).join("・") || "まだ")}）</button>
-      <button class="small" id="sRoom">あたらしい へやに する</button><div class="sub">まえに おくった リンクは つかえなくなります</div>
       <div class="ver">版 ${VERSION}</div>
       <button class="big2" id="sClose">とじる</button></div>`);
     document.querySelectorAll(".opt").forEach(b => b.onclick = () => { CFG[b.dataset.k] = +b.dataset.v; saveCFG(); settings(back); });
@@ -4044,7 +4056,6 @@ const VERSION = "11/24 12:27 f55a864";
     document.querySelectorAll(".pDel").forEach(b => b.onclick = () => { if (b.dataset.armed) { PEOPLE.remove(b.dataset.pid); settings(back); } else { b.dataset.armed = 1; b.textContent = "もういちど おすと けす"; } });
     $("sReg").onclick = () => regScreen(() => settings(back));
     $("sName").onclick = () => askNames((CFG.names || []).filter(Boolean).length === 2 ? 2 : 1, () => settings(back));
-    $("sRoom").onclick = () => { NET.newRoom(); $("sRoom").textContent = "つぎに よぶときから あたらしい へやです"; };
     if (NET.role) NET.linkType().then(x => { const e = $("linkInfo"); if (e) e.textContent = "いまの つながり：" + x; });
   }
   let noteT = 0;

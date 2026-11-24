@@ -10,7 +10,7 @@ log = lambda: json.load(urllib.request.urlopen("http://127.0.0.1:9100/"))["log"]
 async def newp(b):
     c = await b.new_context(viewport={"width": 390, "height": 844}, permissions=["camera", "microphone"]); return await c.new_page()
 async def chooser(p, name):
-    await p.goto(BASE); await p.click("#goFar"); await p.click("#p1"); await p.fill("#nm0", name); await p.click("#nmOk"); await p.wait_for_selector("#goPlay")
+    await p.goto(BASE); await p.click("#goFar"); await p.click("#p1"); await p.fill("#nm0", name); await p.click("#nmOk"); await p.wait_for_selector("#goBack")
 async def main():
     async with async_playwright() as pw:
         b = await pw.chromium.launch(args=ARGS)
@@ -21,7 +21,7 @@ async def main():
         for k, p in [("A", A), ("C", C), ("D", D)]:
             for o in "ACD":
                 if o != k: await p.evaluate(f"PEOPLE.add('{pid[o]}',['{nm[o]}'])")
-            await p.click("#goBack"); await p.click("#goFar"); await p.click("#p1"); await p.click("#nmOk"); await p.wait_for_selector("#goPlay")
+            await p.click("#goBack"); await p.click("#goFar"); await p.click("#p1"); await p.click("#nmOk"); await p.wait_for_selector("#goBack")
         # A：C と D／C：A と D を えらんで ほぼ同時に よぶ
         for p, sel in [(A, "CD"), (C, "AD")]:
             for o in sel: await p.click(f".person[data-pid='{pid[o]}']")

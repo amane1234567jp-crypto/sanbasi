@@ -16,7 +16,7 @@ async def main():
     async with async_playwright() as pw:
         b = await pw.chromium.launch(args=ARGS)
         A = await newp(b); await A.goto(BASE); await A.click("#goFar"); await A.click("#p1"); await names(A, 1, "ばあば")
-        await A.wait_for_selector("#goReg"); await A.click("#goReg"); await A.wait_for_selector("#sLine")
+        await A.click("#goOther"); await A.click("#goReg"); await A.wait_for_selector("#sLine")
         await A.screenshot(path="/home/claude/sanbasi/shots/reg-screen.png")
         reg = await A.evaluate("PEOPLE.regURL()"); print("とうろくリンク:", reg.split("?")[1][:60], "…")
         # B（ふたり）・C・D が 同じリンクを ひらく（LINE のグループに 送った想定）
@@ -34,7 +34,7 @@ async def main():
         # A：C と D を えらんで あそぼう
         for k in ["C", "D"]:
             pid = await devs[k].evaluate("PEOPLE.pid"); await A.click(f".person[data-pid='{pid}']")
-        print("あそぼう ボタン:", "押せる" if await A.evaluate("!document.querySelector('#goPlay').disabled") else "押せない")
+        print("よぶ ボタン:", await A.evaluate("document.querySelector('#goPlay').textContent"))
         await A.click("#goPlay"); await A.wait_for_function("NET.peer && NET.peer.open", timeout=20000); await A.wait_for_timeout(1500)
         calls = log(); print("よびだし:", len(calls), "件 →", [c["body"][:16] for c in calls])
         url = calls[-1]["url"]
