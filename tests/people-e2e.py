@@ -16,7 +16,7 @@ async def main():
     async with async_playwright() as pw:
         b = await pw.chromium.launch(args=ARGS)
         A = await newp(b); await A.goto(BASE); await A.click("#goFar"); await A.click("#p1"); await names(A, 1, "ばあば")
-        await A.click("#goOther"); await A.click("#goReg"); await A.wait_for_selector("#sLine")
+        await A.click("#goOther"); await A.wait_for_selector("#sLine")
         await A.screenshot(path="/home/claude/sanbasi/shots/reg-screen.png")
         reg = await A.evaluate("PEOPLE.regURL()"); print("とうろくリンク:", reg.split("?")[1][:60], "…")
         # B（ふたり）・C・D が 同じリンクを ひらく（LINE のグループに 送った想定）

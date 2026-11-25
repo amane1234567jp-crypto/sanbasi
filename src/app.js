@@ -453,12 +453,12 @@
     pendT = setTimeout(pendTick, now - (CFG.pendSince || 0) < 15 * 60e3 ? 10000 : 30000);
   }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !started && mode !== "guest") { pollPending(); if (CFG.pendUntil && !pendT) pendTick(); } });
-  let chooserRedraw = null;
+  let chooserRedraw = null, lastChooser = [1, []];
   /* だれと あそぶ？（2026-11-24 あまねさん「ややこしすぎ。階層化してよいので シンプルに」）
      この画面は 子どもも見る：とうろくした人を えらぶ だけ。そろうと「〇〇と △△を よぶ」が出る。
-     あたらしい人を さそうのは 下の「ほかの ひとを さそう」→ つぎの画面（親が操作：登録する／今回だけ） */
+     あたらしい人を さそうのは 下の「ほかの ひとを さそう」→ そのまま 登録のリンクを送る画面（「今回だけ」は なくした） */
   function chooser(n, names) {
-    const tok = ++screenTok, sel = new Set();
+    const tok = ++screenTok, sel = new Set(); lastChooser = [n, names];
     let waits = [];   // いま 自分を まっている人（よばれたのに 通知を 見のがしていても ここから はいれる）
     PEOPLE.reg(false);
     PEOPLE.peek().then(w => { waits = w; draw(); });
@@ -478,21 +478,10 @@
       document.querySelectorAll(".person").forEach(b => b.onclick = () => { const p = b.dataset.pid; sel.has(p) ? sel.delete(p) : sel.add(p); draw(); });
       document.querySelectorAll(".waitIn").forEach(b => b.onclick = () => goJoin(waits[+b.dataset.k], n, names, []));
       if ($("goPlay")) $("goPlay").onclick = () => { if (!sel.size || need > 0) return; const inv = list.filter(x => sel.has(x.pid)).map(x => ({ pid: x.pid, names: x.names, st: "call" })); startHost(n, names, inv); };
-      $("goOther").onclick = () => inviteMenu(n, names);
+      $("goOther").onclick = () => regScreen(() => chooser(n, names));   // さそう＝とうろく（2026-11-25 あまねさん「問答無用で登録してOK」）
       $("goBack").onclick = startScreen;
     };
     chooserRedraw = draw; draw(); pollPending();
-  }
-  // あたらしい人を さそう（親が操作するので ふつうの漢字かなまじり）。2つから えらぶ
-  function inviteMenu(n, names) {
-    screenTok++;
-    overlay(`<div class="card adult"><h2>新しい人を誘う</h2>
-      <button class="big1" id="goReg">登録する<small>次からは「だれと あそぶ？」で選ぶだけで呼べます</small></button>
-      <button class="big2" id="goLink">今回だけ誘う<small>登録しないで、いま遊ぶためのリンクを送ります</small></button>
-      <button class="small" id="imBack">戻る</button></div>`);
-    $("goReg").onclick = () => regScreen(() => chooser(n, names));
-    $("goLink").onclick = () => startHost(n, names, []);
-    $("imBack").onclick = () => chooser(n, names);
   }
   // とうろく用の リンクを 送る画面
   function regScreen(back) {
@@ -790,7 +779,8 @@
   let lastT = performance.now();
   (function loop(t) { if (t - lastT >= 30) { FX.step(Math.min(.05, (t - lastT) / 1000)); lastT = t; } requestAnimationFrame(loop); })(lastT);
 
-  window.SANBASI = { get state() { return S; }, get busy() { return busy; }, get mode() { return mode; }, get mySeats() { return [...mySeats]; }, get started() { return started; }, get game() { return game; }, get hist() { return hist.slice(); }, play, nextGame };
+  window.SANBASI = { get state() { return S; }, get busy() { return busy; }, get mode() { return mode; }, get mySeats() { return [...mySeats]; }, get started() { return started; }, get game() { return game; }, get hist() { return hist.slice(); }, play, nextGame,
+    linkHost: () => startHost(lastChooser[0], lastChooser[1], []) };   // 確認用：登録なしのリンクで よぶ（画面からは なくした）
   S = SB.replay([], 0); layout(); seats();
   const Q0 = new URLSearchParams(location.search);
   PEOPLE.reg(false);   // 名前と（アプリで許可ずみなら）通知の宛先を 中継に

@@ -12,7 +12,7 @@ async def main():
         b = await pw.chromium.launch(args=ARGS); errs = []
         hc = await b.new_context(viewport={"width": 390, "height": 844}, permissions=["camera", "microphone"])
         host = await hc.new_page(); host.on("pageerror", lambda e: errs.append(str(e)))
-        await host.goto(BASE); await host.click("#goFar"); await host.click("#p1"); await names(host, 1, "ホスト"); await host.click("#goOther"); await host.click("#goLink")
+        await host.goto(BASE); await host.click("#goFar"); await host.click("#p1"); await names(host, 1, "ホスト"); await host.wait_for_selector("#goOther"); await host.evaluate("SANBASI.linkHost()")
         await host.wait_for_function("NET.room && NET.peer && NET.peer.open", timeout=20000)
         url = await host.evaluate("NET.inviteURL()")
         gc = await b.new_context(viewport={"width": 390, "height": 844}, permissions=["camera", "microphone"])
@@ -39,7 +39,7 @@ async def main():
         # カメラなし（許可しない）
         nb = await pw.chromium.launch(args=["--autoplay-policy=no-user-gesture-required"])
         nc = await nb.new_context(viewport={"width": 390, "height": 844})
-        np_ = await nc.new_page(); await np_.goto(BASE); await np_.click("#goFar"); await np_.click("#p1"); await names(np_, 1, "テスト"); await np_.click("#goOther"); await np_.click("#goLink")
+        np_ = await nc.new_page(); await np_.goto(BASE); await np_.click("#goFar"); await np_.click("#p1"); await names(np_, 1, "テスト"); await np_.wait_for_selector("#goOther"); await np_.evaluate("SANBASI.linkHost()")
         await np_.wait_for_function("document.querySelector('#note').classList.contains('show')", timeout=20000)
         await np_.screenshot(path="/home/claude/sanbasi/shots/nocam.png")
         print("カメラなしの案内: OK")
