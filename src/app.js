@@ -435,7 +435,7 @@
   const people = () => PEOPLE.list();
   const pnames = x => (x.names || []).join("・") || "？";
   /* 自分のリンクで とうろくした人を 受けとる（リバーシ 1.0.7 の教訓）
-     ・とうろくの画面を ひらいてから 24時間は、前に出ているあいだ たしかめつづける（はじめの15分は10秒ごと・あとは30秒ごと）
+     ・とうろくの画面を ひらいてから 24時間は、前に出ているあいだ たしかめつづける（はじめの10分は2秒ごと・30分までは10秒ごと・あとは30秒ごと。2026-11-25「10秒は長い」）
      ・LINE から もどったとき・「だれと あそぶ？」を ひらいたときにも たしかめる
      ・対局中は たしかめない */
   async function pollPending() {
@@ -444,13 +444,14 @@
     if (got.length) { SFX.sparkle(); note(`<b>${got.map(esc).join("、")}</b> が とうろく しました！`); if ($("chooserList") && chooserRedraw) chooserRedraw(); }
   }
   let pendT = 0;
-  function pendStart() { CFG.pendSince = Date.now(); CFG.pendUntil = Date.now() + 24 * 3600e3; saveCFG(); if (!pendT) pendT = setTimeout(pendTick, 10000); }
+  function pendStart() { CFG.pendSince = Date.now(); CFG.pendUntil = Date.now() + 24 * 3600e3; saveCFG(); clearTimeout(pendT); pendT = setTimeout(pendTick, 2000); }
   async function pendTick() {
     clearTimeout(pendT); pendT = 0;
     const now = Date.now();
     if (!CFG.pendUntil || now > CFG.pendUntil) { if (CFG.pendUntil) { delete CFG.pendUntil; delete CFG.pendSince; saveCFG(); } return; }
     if (document.visibilityState !== "hidden") await pollPending();
-    pendT = setTimeout(pendTick, now - (CFG.pendSince || 0) < 15 * 60e3 ? 10000 : 30000);
+    const el = now - (CFG.pendSince || 0);
+    pendT = setTimeout(pendTick, el < 10 * 60e3 ? 2000 : el < 30 * 60e3 ? 10000 : 30000);
   }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !started && mode !== "guest") { pollPending(); if (CFG.pendUntil && !pendT) pendTick(); } });
   let chooserRedraw = null, lastChooser = [1, []];
