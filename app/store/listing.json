@@ -1,0 +1,14 @@
+{
+ "locale": "ja",
+ "name": "サンバーシ",
+ "subtitle": "3人で遊べるリバーシ テレビ電話つき",
+ "privacyPolicyUrl": "https://amane1234567jp-crypto.github.io/sanbasi/legal/privacy.html",
+ "supportUrl": "https://amane1234567jp-crypto.github.io/sanbasi/legal/support.html",
+ "copyright": "2026 UCHINOAJI",
+ "versionString": "1.0.0",
+ "promotionalText": "3人で遊べるリバーシ。はなれた家族や友だちと、テレビ電話で顔を見ながら対戦できます。",
+ "keywords": "オセロ,リバーシ,3人,三人,ボードゲーム,ビデオ通話,テレビ電話,家族,祖父母,孫,友だち,対戦,六角形,子ども",
+ "description": "3人で遊べるリバーシ「サンバーシ」。\nくろ・しろ・あかの3色で、六角形の盤を取りあいます。はなれて暮らす家族や友だちとも、テレビ電話で顔を見ながら遊べます。\n\n■ 3人だから、最後までわからない\n・相手の石を自分の石ではさむと、自分の色に変わります。ルールはふつうのリバーシと同じです。\n・盤のあちこちにある3色の「みんなの いし」は、だれでも はさむのに使えます（返らず、数にも入りません）。角を取った人がひとり勝ちしにくく、最後まで逆転が起こります。\n・1セット3局。先手は局ごとに交代し、勝った局の多い人の勝ちです。\n\n■ とおくの ひとと あそぶ\n・3人がそれぞれのスマホから、テレビ電話でおしゃべりしながら対戦できます。1台のスマホで2人が参加することもできます。\n・はじめての相手には、LINEなどで登録のリンクを送ります。相手がリンクを開くと、おたがいの「だれと あそぶ？」に名前が出ます。\n・遊ぶときは「だれと あそぶ？」で相手を選んで呼ぶだけ。3人そろうと始まります。\n\n■ 1だいで あそぶ\n・1台の端末で、3人が順番に石を置いて遊べます。\n\n■ 子どもにやさしい作り\n・置ける場所に印が出ます。置ける場所がないときは自動でパス。\n・たくさん返すほど派手になる演出と効果音で盛り上がります。\n・画面の文字はひらがなが中心。大人向けの設定は「おとなの せってい」にまとめました。\n\n■ 安心して使えるように\n・広告はありません。\n・知らない人と自動でつながる機能はありません。つながるのは、リンクを送り合って登録した家族や友だちだけです。\n・映像と音声は録画・保存しません。\n\n※ ビデオ通話には、インターネット接続とカメラ・マイクが必要です。",
+ "reviewNotes": "Sanbasi is a three-player variant of Reversi (Othello) on a hexagonal board. Family members or friends can play together while on a video call. No login or account is required. There are no in-app purchases and no ads.\n\nHOW TO TEST\n1) Single device: on the start screen tap the second button (\"1だいで あそぶ\" = play on one device). Three players take turns on one device. This shows the whole game.\n2) Remote play with video (needs 2 or 3 devices with this app; one device can host two players):\n a) Device 1: tap the first button (\"とおくの ひとと あそぶ\"), choose one player (\"ひとり\"), enter a name, then tap \"ひとを さそう\" (invite). A screen with a message, a green \"LINEで送る\" button and other ways to send (share sheet / copy / QR code) appears. This link only registers contacts.\n b) Device 2 (and 3): open the link (or scan the QR code), enter a name. Both devices now show each other's name in the \"だれと あそぶ？\" (who to play with) list.\n c) To play: on device 1 tap \"とおくの ひとと あそぶ\", select the registered people until three players are chosen, then tap the green \"... を よぶ\" (call) button and allow camera and microphone. The others get a push notification (or can be told by LINE); when they open it the devices connect by peer-to-peer video (WebRTC) and the game starts when three players have joined.\n3) Parent settings: \"おとなの せってい\" on the start screen.\n\nVideo and audio are sent directly between the devices (or through an encrypted TURN relay) and are never recorded or stored. Push notifications are used only to tell a registered contact that they are being called or that someone registered.",
+ "whatsNew": ""
+}
